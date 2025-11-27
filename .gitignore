@@ -1,0 +1,60 @@
+# Python setup
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+.env
+.venv
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Dataset (CRITICAL: Do not upload audio files)
+*.wav
+*.mp3
+*.flac
+data/
+vs13/
+
+# Model Weights & Checkpoints (Too large for git)
+*.h5
+*.hdf5
+*.keras
+*.weights.h5
+checkpoints/*
+!checkpoints/.gitkeep
+
+# Logs
+logs/
+training_logs/
