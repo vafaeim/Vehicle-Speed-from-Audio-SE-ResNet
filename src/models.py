@@ -28,12 +28,12 @@ def residual_block(x, filters, downsample=False):
     shortcut = x
     
     # Conv Layer 1
-    y = layers.Conv2D(filters, 3, strides=strides, padding='same', use_bias=False)(x)
+    y = layers.Conv2D(filters, 3, strides=strides, padding='same', use_bias=True)(x)
     y = layers.BatchNormalization()(y)
     y = layers.Activation('relu')(y)
     
     # Conv Layer 2
-    y = layers.Conv2D(filters, 3, strides=1, padding='same', use_bias=False)(y)
+    y = layers.Conv2D(filters, 3, strides=1, padding='same', use_bias=True)(y)
     y = layers.BatchNormalization()(y)
     
     # Attention Mechanism
@@ -41,7 +41,7 @@ def residual_block(x, filters, downsample=False):
     
     # Projection Shortcut if dimensions change
     if downsample:
-        shortcut = layers.Conv2D(filters, 1, strides=strides, padding='same', use_bias=False)(shortcut)
+        shortcut = layers.Conv2D(filters, 1, strides=strides, padding='same', use_bias=True)(shortcut)
         shortcut = layers.BatchNormalization()(shortcut)
         
     # Add residual connection
@@ -57,7 +57,7 @@ def build_se_resnet(input_shape):
     inputs = layers.Input(shape=input_shape)
     
     # --- Entry Flow ---
-    x = layers.Conv2D(Config.BASE_FILTERS, 7, strides=2, padding='same', use_bias=False)(inputs)
+    x = layers.Conv2D(Config.BASE_FILTERS, 7, strides=2, padding='same', use_bias=True)(inputs)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('relu')(x)
     x = layers.MaxPooling2D(3, strides=2, padding='same')(x)
