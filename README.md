@@ -17,9 +17,9 @@ This repository hosts the official TensorFlow source code for our acoustic vehic
 ```
 .
 ├── checkpoints/
-│   ├── fold_1_best_weights.weights.h5
+│   ├── se-resnet-fold-01.weights.h5
 │   ├── ...
-│   └── fold_10_best_weights.weights.h5
+│   └── se-resnet-fold-10.weights.h5
 ├── src/
 │   ├── config.py           # Hyperparameters
 │   ├── data_loader.py      # Data pipeline
