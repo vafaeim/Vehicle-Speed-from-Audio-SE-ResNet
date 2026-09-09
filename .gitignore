@@ -59,3 +59,4 @@ checkpoints/*
 # Logs
 logs/
 training_logs/
+.tmp/

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
-import tensorflow as tf
 import os
+tf = pytest.importorskip("tensorflow", reason="Legacy TensorFlow baseline tests require tensorflow")
 from src.config import Config
 from src.data_loader import preprocess_audio
 

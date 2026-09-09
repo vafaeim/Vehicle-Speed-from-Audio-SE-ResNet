@@ -1,5 +1,5 @@
-import tensorflow as tf
 import pytest
+tf = pytest.importorskip("tensorflow", reason="Legacy TensorFlow baseline tests require tensorflow")
 from src.models import build_se_resnet, squeeze_excite_block
 from src.config import Config
 
