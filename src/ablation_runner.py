@@ -898,30 +898,65 @@ def main():
     preloaded_train = [path_to_audio[p] for p in train_paths]
     preloaded_val = [path_to_audio[p] for p in val_paths]
 
-    results = []
+    # Prepare multiprocessing queues
+    import torch.multiprocessing as mp
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass
+
+    manager = mp.Manager()
+    task_queue = manager.Queue()
+    result_queue = manager.Queue()
+
     for idx, cfg in enumerate(configs, 1):
-        logger.info(
-            f"[{idx}/{len(configs)}] Training ablation variant: {cfg.variant_name} ({cfg.variant_type})"
-        )
-        res = train_ablation_variant(
-            cfg=cfg,
-            train_paths=train_paths,
-            train_speeds=train_speeds,
-            val_paths=val_paths,
-            val_speeds=val_speeds,
-            stats=stats,
-            device=device,
-            epochs=args.epochs,
-            batch_size=args.batch_size,
-            patience=args.patience,
-            preloaded_audio_train=preloaded_train,
-            preloaded_audio_val=preloaded_val,
-        )
-        results.append(res)
-        logger.info(
-            f"  -> Completed {cfg.variant_name}: Params={res.parameter_count:,}, "
-            f"Best Val RMSE={res.val_rmse:.2f} km/h, MAE={res.val_mae:.2f} km/h, Latency={res.latency_ms:.2f} ms"
-        )
+        task_queue.put((idx, len(configs), cfg))
+
+    n_gpus = torch.cuda.device_count()
+    if n_gpus < 1: n_gpus = 1
+
+    logger.info(f"Starting {n_gpus} dual-GPU workers to train {len(configs)} ablation variants in parallel...")
+    
+    # We define the worker function directly here or import it
+    # But it's easier to just write it inline since it just wraps train_ablation_variant
+    def ablation_worker(gpu_id, q_task, q_res):
+        import logging
+        dev = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+        while not q_task.empty():
+            try:
+                task = q_task.get(timeout=3)
+            except Exception:
+                break
+            i, total, c = task
+            logger.info(f"[{dev}] [{i}/{total}] Starting ablation variant: {c.variant_name}")
+            try:
+                res = train_ablation_variant(
+                    cfg=c, train_paths=train_paths, train_speeds=train_speeds,
+                    val_paths=val_paths, val_speeds=val_speeds, stats=stats,
+                    device=dev, epochs=args.epochs, batch_size=args.batch_size,
+                    patience=args.patience, preloaded_audio_train=preloaded_train, preloaded_audio_val=preloaded_val
+                )
+                logger.info(f"[{dev}] [{i}/{total}] Completed {c.variant_name} - Val RMSE={res.val_rmse:.2f} km/h")
+                q_res.put(res)
+            except Exception as e:
+                logger.error(f"[{dev}] Error in {c.variant_name}: {e}")
+
+    processes = []
+    for i in range(n_gpus):
+        p = mp.Process(target=ablation_worker, args=(i % n_gpus, task_queue, result_queue))
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()
+
+    results = []
+    while not result_queue.empty():
+        results.append(result_queue.get())
+
+    # Sort results to match original config order roughly
+    # (Since we didn't store the exact sort key, we'll sort by group and RMSE)
+    results.sort(key=lambda r: (r.group, r.val_rmse))
 
     save_results_to_csv(results, args.output_csv)
     print_results_table(results)
