@@ -72,44 +72,46 @@ class VS13MelDataset(Dataset):
         self.stats_mean = stats_mean
         self.stats_std = stats_std
         self.is_training = is_training
+        
+        # Precompute and cache all mel spectrograms in memory
+        # since the dataset is very small (~400 samples)
+        self.cached_tensors = []
+        import librosa
+        n_frames = int(np.ceil(Config.AUDIO_LENGTH_SAMPLES / Config.HOP_LENGTH))
+        
+        for path in self.audio_paths:
+            try:
+                audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
+                if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
+                    audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
+                else:
+                    audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
+
+                mel = librosa.feature.melspectrogram(
+                    y=audio,
+                    sr=Config.SAMPLE_RATE,
+                    n_fft=Config.N_FFT,
+                    hop_length=Config.HOP_LENGTH,
+                    n_mels=Config.N_MELS,
+                )
+                mel_db = librosa.power_to_db(mel, ref=np.max)
+
+                if self.stats_mean is not None and self.stats_std is not None:
+                    mel_norm = (mel_db - self.stats_mean) / self.stats_std
+                else:
+                    mel_norm = mel_db
+
+                tensor = torch.tensor(mel_norm, dtype=torch.float32).unsqueeze(0)
+            except Exception:
+                tensor = torch.zeros((1, Config.N_MELS, n_frames), dtype=torch.float32)
+                
+            self.cached_tensors.append(tensor)
 
     def __len__(self) -> int:
         return len(self.audio_paths)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        path = self.audio_paths[idx]
-        speed = self.speeds[idx]
-
-        try:
-            import librosa
-
-            audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
-            if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
-                audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
-            else:
-                audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
-
-            mel = librosa.feature.melspectrogram(
-                y=audio,
-                sr=Config.SAMPLE_RATE,
-                n_fft=Config.N_FFT,
-                hop_length=Config.HOP_LENGTH,
-                n_mels=Config.N_MELS,
-            )
-            mel_db = librosa.power_to_db(mel, ref=np.max)
-
-            if self.stats_mean is not None and self.stats_std is not None:
-                mel_norm = (mel_db - self.stats_mean) / self.stats_std
-            else:
-                mel_norm = mel_db
-
-            tensor = torch.tensor(mel_norm, dtype=torch.float32).unsqueeze(0)
-        except Exception:
-            # Fallback zero tensor matching expected dimensions
-            n_frames = int(np.ceil(Config.AUDIO_LENGTH_SAMPLES / Config.HOP_LENGTH))
-            tensor = torch.zeros((1, Config.N_MELS, n_frames), dtype=torch.float32)
-
-        return tensor, speed
+        return self.cached_tensors[idx], self.speeds[idx]
 
 
 def run_dummy_inner_trial(
