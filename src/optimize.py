@@ -80,6 +80,17 @@ logging.basicConfig(
 logger = logging.getLogger("optimize_physics")
 
 
+def normalize_storage_url(storage_url: str) -> str:
+    """
+    Ensures SQLite URLs specify an explicit busy timeout to prevent database locks
+    under concurrent multi-process writes.
+    """
+    if storage_url.startswith("sqlite://") and "timeout=" not in storage_url:
+        delimiter = "&" if "?" in storage_url else "?"
+        return f"{storage_url}{delimiter}timeout=60"
+    return storage_url
+
+
 def run_dummy_inner_trial(
     device: torch.device,
     lr: float,
@@ -89,7 +100,8 @@ def run_dummy_inner_trial(
     physics_weight: float,
     cauchy_gamma: float,
     bound_weight: float,
-    base_filters: int = 32,
+    base_filters: int = 16,
+    audio_length: int = 4000,
 ) -> float:
     """
     Executes a fast synthetic dummy training and evaluation step strictly on CPU.
@@ -118,11 +130,11 @@ def run_dummy_inner_trial(
 
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-    # Synthetic batch of size 2: raw 1D audio (2, 1, 16000) and target speeds (2, 1)
-    x_train = torch.randn(2, 1, 16000, device=device)
+    # Synthetic batch of size 2: raw 1D audio (2, 1, audio_length) and target speeds (2, 1)
+    x_train = torch.randn(2, 1, audio_length, device=device)
     y_train = torch.tensor([[50.0], [75.0]], dtype=torch.float32, device=device)
 
-    x_val = torch.randn(2, 1, 16000, device=device)
+    x_val = torch.randn(2, 1, audio_length, device=device)
     y_val = torch.tensor([[52.0], [72.0]], dtype=torch.float32, device=device)
 
     # 3. Training step (1 epoch)
@@ -167,6 +179,7 @@ def run_dummy_inner_trial(
         val_loss = criterion(val_pred, y_val)
         val_rmse = float(torch.sqrt(torch.mean((val_pred - y_val) ** 2)).item())
 
+    del model, criterion, optimizer, pred, loss, loss_with_seq, x_train, y_train, x_val, y_val, val_pred, val_loss
     return val_rmse
 
 
@@ -316,9 +329,14 @@ def run_worker(
     Binds worker to target GPU ('cuda:0' or 'cuda:1', or strictly 'cpu' in dummy mode).
     Connects to the persistent shared SQLite study and runs Optuna TPE optimization.
     """
+    storage_url = normalize_storage_url(storage_url)
+
     if is_dummy:
         # STRICTLY force 'cpu' device; never access CUDA
         device = torch.device("cpu")
+        torch.set_num_threads(1)
+        if hasattr(torch.backends, "nnpack"):
+            torch.backends.nnpack.enabled = False
         print(f"[{gpu_id}] Dummy Mode active: strictly bound to CPU device.")
     else:
         # Bind explicitly to target GPU with graceful fallback for single-GPU systems
@@ -339,6 +357,9 @@ def run_worker(
                 )
         else:
             device = torch.device("cpu")
+            torch.set_num_threads(1)
+            if hasattr(torch.backends, "nnpack"):
+                torch.backends.nnpack.enabled = False
             print(f"[{gpu_id}] CUDA unavailable; operating on CPU device.")
 
     # Attach to shared persistent Optuna study
@@ -509,6 +530,8 @@ def main():
         print(f"  - Nested CV: K_outer={args.outer_folds}, K_inner={args.inner_folds}")
         print("=" * 70)
 
+    args.storage = normalize_storage_url(args.storage)
+
     # 1. Initialize persistent SQLite Optuna study in main process
     study = optuna.create_study(
         study_name=args.study_name,
@@ -561,14 +584,20 @@ def main():
 
     # 4. Load resulting study and verify SQLite persistence
     updated_study = optuna.load_study(study_name=args.study_name, storage=args.storage)
+    completed_trials = [
+        t for t in updated_study.trials if t.state == optuna.trial.TrialState.COMPLETE
+    ]
     print("\n" + "=" * 70)
     print(" PHYSICS-INFORMED HPO EXECUTION COMPLETED SUCCESSFULLY")
     print(f"  - Total Trials Recorded in SQLite: {len(updated_study.trials)}")
-    if len(updated_study.trials) > 0:
+    print(f"  - Completed Trials: {len(completed_trials)}")
+    if len(completed_trials) > 0:
         print(f"  - Best Trial Objective (RMSE): {updated_study.best_value:.4f} km/h")
         print(f"  - Best Hyperparameters Discovered:")
         for k, v in updated_study.best_params.items():
             print(f"      * {k}: {v}")
+    elif len(updated_study.trials) > 0:
+        print("  - Warning: No trials completed successfully (all failed or pruned).")
     print("=" * 70)
 
 

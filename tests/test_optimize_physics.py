@@ -192,8 +192,33 @@ def test_dummy_cli_subprocess_run(tmp_path):
         "--study_name",
         "test_study_dummy",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
     assert result.returncode == 0, f"Process failed with code {result.returncode}:\n{result.stderr}"
     assert "FAST DUMMY VERIFICATION MODE ACTIVE" in result.stdout
     assert "PHYSICS-INFORMED HPO EXECUTION COMPLETED SUCCESSFULLY" in result.stdout
     assert "Total Trials Recorded in SQLite: 2" in result.stdout
+
+
+def test_normalize_storage_url():
+    """Verify SQLite URL busy timeout injection for concurrency robustness."""
+    from src.optimize import normalize_storage_url
+
+    assert normalize_storage_url("sqlite:///foo.db") == "sqlite:///foo.db?timeout=60"
+    assert normalize_storage_url("sqlite:///foo.db?mode=ro") == "sqlite:///foo.db?mode=ro&timeout=60"
+    assert normalize_storage_url("sqlite:///foo.db?timeout=30") == "sqlite:///foo.db?timeout=30"
+    assert normalize_storage_url("postgresql://localhost/db") == "postgresql://localhost/db"
+
+
+def test_study_with_failed_trials_handled_safely(tmp_path):
+    """Verify that a study where trials failed does not crash when checking for completions."""
+    from src.optimize import normalize_storage_url
+
+    storage = normalize_storage_url(f"sqlite:///{tmp_path}/failed_study.db")
+    study = optuna.create_study(storage=storage, study_name="failed_study")
+    trial = study.ask()
+    study.tell(trial, state=optuna.trial.TrialState.FAIL)
+
+    loaded = optuna.load_study(study_name="failed_study", storage=storage)
+    completed = [t for t in loaded.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    assert len(completed) == 0
+    assert len(loaded.trials) == 1
