@@ -309,6 +309,7 @@ def apply_augmentations(
 class VS13AblationDataset(Dataset):
     """
     PyTorch Dataset wrapper for acoustic speed estimation with modular augmentations.
+    Caches raw audio waveforms in memory to avoid redundant disk I/O every epoch.
     """
 
     def __init__(
@@ -322,7 +323,6 @@ class VS13AblationDataset(Dataset):
         use_noise: bool = True,
         augment_prob: float = 0.8,
     ):
-        self.audio_paths = audio_paths
         self.speeds = torch.tensor(speeds, dtype=torch.float32)
         self.stats_mean = stats_mean
         self.stats_std = stats_std
@@ -331,54 +331,73 @@ class VS13AblationDataset(Dataset):
         self.use_noise = use_noise
         self.augment_prob = augment_prob
 
+        # Cache raw audio waveforms in memory (expensive librosa.load only once)
+        import librosa
+        self.cached_audio = []
+        for path in audio_paths:
+            try:
+                audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
+                if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
+                    audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
+                else:
+                    audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
+            except Exception:
+                audio = np.zeros(Config.AUDIO_LENGTH_SAMPLES, dtype=np.float32)
+            self.cached_audio.append(audio)
+
+        # For validation (no augmentation), pre-compute mel tensors for max speed
+        if not is_training:
+            self.cached_tensors = []
+            for audio in self.cached_audio:
+                max_val = np.max(np.abs(audio))
+                if max_val > 0:
+                    audio = audio / max_val
+                mel = librosa.feature.melspectrogram(
+                    y=audio, sr=Config.SAMPLE_RATE,
+                    n_fft=Config.N_FFT, hop_length=Config.HOP_LENGTH, n_mels=Config.N_MELS,
+                )
+                mel_db = librosa.power_to_db(mel, ref=np.max)
+                if self.stats_mean is not None and self.stats_std is not None:
+                    mel_db = (mel_db - self.stats_mean) / self.stats_std
+                self.cached_tensors.append(torch.tensor(mel_db, dtype=torch.float32).unsqueeze(0))
+        else:
+            self.cached_tensors = None
+
     def __len__(self) -> int:
-        return len(self.audio_paths)
+        return len(self.speeds)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        path = self.audio_paths[idx]
         speed = self.speeds[idx]
 
-        try:
-            import librosa
+        # Validation: fully cached
+        if self.cached_tensors is not None:
+            return self.cached_tensors[idx], speed
 
-            audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
-            if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
-                audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
-            else:
-                audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
+        # Training: apply stochastic augmentations on cached audio
+        import librosa
+        audio = self.cached_audio[idx].copy()
 
-            if self.is_training:
-                audio = apply_augmentations(
-                    audio,
-                    use_gain=self.use_gain,
-                    use_noise=self.use_noise,
-                    augment_prob=self.augment_prob,
-                )
+        audio = apply_augmentations(
+            audio,
+            use_gain=self.use_gain,
+            use_noise=self.use_noise,
+            augment_prob=self.augment_prob,
+        )
 
-            # Peak amplitude normalization
-            max_val = np.max(np.abs(audio))
-            if max_val > 0:
-                audio = audio / max_val
+        max_val = np.max(np.abs(audio))
+        if max_val > 0:
+            audio = audio / max_val
 
-            mel = librosa.feature.melspectrogram(
-                y=audio,
-                sr=Config.SAMPLE_RATE,
-                n_fft=Config.N_FFT,
-                hop_length=Config.HOP_LENGTH,
-                n_mels=Config.N_MELS,
-            )
-            mel_db = librosa.power_to_db(mel, ref=np.max)
+        mel = librosa.feature.melspectrogram(
+            y=audio, sr=Config.SAMPLE_RATE,
+            n_fft=Config.N_FFT, hop_length=Config.HOP_LENGTH, n_mels=Config.N_MELS,
+        )
+        mel_db = librosa.power_to_db(mel, ref=np.max)
 
-            if self.stats_mean is not None and self.stats_std is not None:
-                mel_norm = (mel_db - self.stats_mean) / self.stats_std
-            else:
-                mel_norm = mel_db
+        if self.stats_mean is not None and self.stats_std is not None:
+            mel_db = (mel_db - self.stats_mean) / self.stats_std
 
-            tensor = torch.tensor(mel_norm, dtype=torch.float32).unsqueeze(0)
-        except Exception:
-            n_frames = int(np.ceil(Config.AUDIO_LENGTH_SAMPLES / Config.HOP_LENGTH))
-            tensor = torch.zeros((1, Config.N_MELS, n_frames), dtype=torch.float32)
-
+        tensor = torch.tensor(mel_db, dtype=torch.float32).unsqueeze(0)
         return tensor, speed
 
 
