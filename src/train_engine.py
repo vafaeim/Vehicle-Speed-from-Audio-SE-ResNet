@@ -66,8 +66,14 @@ def run_cross_validation(all_paths, all_speeds, stats: Dict[str, Any]):
             is_training=False, preloaded_audio=audio_val
         )
         
-        train_loader = DataLoader(train_ds, batch_size=Config.BATCH_SIZE, shuffle=True)
-        val_loader = DataLoader(val_ds, batch_size=Config.BATCH_SIZE, shuffle=False)
+        train_loader = DataLoader(
+            train_ds, batch_size=Config.BATCH_SIZE, shuffle=True, 
+            num_workers=4, pin_memory=True, persistent_workers=True
+        )
+        val_loader = DataLoader(
+            val_ds, batch_size=Config.BATCH_SIZE, shuffle=False, 
+            num_workers=4, pin_memory=True, persistent_workers=True
+        )
         
         model = build_se_resnet(
             input_shape=input_shape,

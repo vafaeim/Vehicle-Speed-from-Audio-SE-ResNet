@@ -591,8 +591,14 @@ def train_ablation_variant(
         preloaded_audio=preloaded_audio_val,
     )
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=False)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, drop_last=False)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, drop_last=False,
+        num_workers=4, pin_memory=True, persistent_workers=True
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=batch_size, shuffle=False, drop_last=False,
+        num_workers=4, pin_memory=True, persistent_workers=True
+    )
 
     # 2. Build model
     model = build_ablation_model(
