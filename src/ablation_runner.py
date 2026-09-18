@@ -801,6 +801,30 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+
+def ablation_worker_top(gpu_id, q_task, q_res, train_paths, train_speeds, val_paths, val_speeds, stats, epochs, batch_size, patience, preloaded_train, preloaded_val):
+    import logging
+    import torch
+    dev = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
+    while not q_task.empty():
+        try:
+            task = q_task.get(timeout=3)
+        except Exception:
+            break
+        i, total, c = task
+        logger.info(f"[{dev}] [{i}/{total}] Starting ablation variant: {c.variant_name}")
+        try:
+            res = train_ablation_variant(
+                cfg=c, train_paths=train_paths, train_speeds=train_speeds,
+                val_paths=val_paths, val_speeds=val_speeds, stats=stats,
+                device=dev, epochs=epochs, batch_size=batch_size,
+                patience=patience, preloaded_audio_train=preloaded_train, preloaded_audio_val=preloaded_val
+            )
+            logger.info(f"[{dev}] [{i}/{total}] Completed {c.variant_name} - Val RMSE={res.val_rmse:.2f} km/h")
+            q_res.put(res)
+        except Exception as e:
+            logger.error(f"[{dev}] Error in {c.variant_name}: {e}")
+
 def main():
     args = parse_args()
 
@@ -919,31 +943,11 @@ def main():
     
     # We define the worker function directly here or import it
     # But it's easier to just write it inline since it just wraps train_ablation_variant
-    def ablation_worker(gpu_id, q_task, q_res):
-        import logging
-        dev = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
-        while not q_task.empty():
-            try:
-                task = q_task.get(timeout=3)
-            except Exception:
-                break
-            i, total, c = task
-            logger.info(f"[{dev}] [{i}/{total}] Starting ablation variant: {c.variant_name}")
-            try:
-                res = train_ablation_variant(
-                    cfg=c, train_paths=train_paths, train_speeds=train_speeds,
-                    val_paths=val_paths, val_speeds=val_speeds, stats=stats,
-                    device=dev, epochs=args.epochs, batch_size=args.batch_size,
-                    patience=args.patience, preloaded_audio_train=preloaded_train, preloaded_audio_val=preloaded_val
-                )
-                logger.info(f"[{dev}] [{i}/{total}] Completed {c.variant_name} - Val RMSE={res.val_rmse:.2f} km/h")
-                q_res.put(res)
-            except Exception as e:
-                logger.error(f"[{dev}] Error in {c.variant_name}: {e}")
+
 
     processes = []
     for i in range(n_gpus):
-        p = mp.Process(target=ablation_worker, args=(i % n_gpus, task_queue, result_queue))
+        p = mp.Process(target=ablation_worker_top, args=(i % n_gpus, task_queue, result_queue, train_paths, train_speeds, val_paths, val_speeds, stats, args.epochs, args.batch_size, args.patience, preloaded_train, preloaded_val))
         p.start()
         processes.append(p)
 

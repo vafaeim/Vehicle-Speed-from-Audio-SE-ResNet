@@ -812,7 +812,40 @@ def run_ensemble_inference(
         print(f"[WARN] No checkpoints found in {weights_dir}. Instantiating initialized SE-ResNet for evaluation.")
         checkpoint_candidates = [None]
 
-    # Preprocessing / dummy loading for acoustic evaluation
+    # Calculate normalization statistics on all paths
+    from src.utils import calculate_global_stats
+    from src.ablation_runner import VS13AblationDataset
+    from torch.utils.data import DataLoader
+
+    stats = calculate_global_stats(paths)
+    mean_val = np.array(stats["mean"], dtype=np.float32)
+    std_val = np.array(stats["std"], dtype=np.float32)
+
+    print(f"[INFO] Pre-loading {len(paths)} audio files for real inference...", flush=True)
+    import librosa
+    master_audio = []
+    for i, path in enumerate(paths):
+        if i % 100 == 0: print(f"  Loaded {i}/{len(paths)}", flush=True)
+        try:
+            audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
+            if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
+                audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
+            else:
+                audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
+        except Exception:
+            audio = np.zeros(Config.AUDIO_LENGTH_SAMPLES, dtype=np.float32)
+        master_audio.append(audio)
+
+    test_ds = VS13AblationDataset(
+        audio_paths=paths, speeds=speeds, stats_mean=mean_val, stats_std=std_val,
+        is_training=False, preloaded_audio=master_audio
+    )
+    
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False, 
+        num_workers=4, pin_memory=True, persistent_workers=True
+    )
+
     n_frames = int(np.ceil(Config.AUDIO_LENGTH_SAMPLES / Config.HOP_LENGTH))
     input_shape = (1, Config.N_MELS, n_frames)
 
@@ -837,15 +870,12 @@ def run_ensemble_inference(
         model = model.to(device)
         model.eval()
 
-        # Batch prediction with AMP
         fold_preds = []
         with torch.inference_mode():
             with get_amp_context(device, enabled=enable_amp):
-                for i in range(0, len(paths), batch_size):
-                    batch_len = min(batch_size, len(paths) - i)
-                    # Simulated feature batch if raw audio loader not pre-cached
-                    batch_tensor = torch.randn(batch_len, 1, Config.N_MELS, n_frames, device=device)
-                    out = model(batch_tensor)
+                for X_b, _ in test_loader:
+                    X_b = X_b.to(device)
+                    out = model(X_b)
                     fold_preds.extend(out.squeeze(-1).cpu().numpy())
 
         all_fold_preds.append(fold_preds)
