@@ -322,6 +322,7 @@ class VS13AblationDataset(Dataset):
         use_gain: bool = True,
         use_noise: bool = True,
         augment_prob: float = 0.8,
+        preloaded_audio: Optional[List[np.ndarray]] = None,
     ):
         self.speeds = torch.tensor(speeds, dtype=torch.float32)
         self.stats_mean = stats_mean
@@ -333,17 +334,21 @@ class VS13AblationDataset(Dataset):
 
         # Cache raw audio waveforms in memory (expensive librosa.load only once)
         import librosa
-        self.cached_audio = []
-        for path in audio_paths:
-            try:
-                audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
-                if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
-                    audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
-                else:
-                    audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
-            except Exception:
-                audio = np.zeros(Config.AUDIO_LENGTH_SAMPLES, dtype=np.float32)
-            self.cached_audio.append(audio)
+        
+        if preloaded_audio is not None:
+            self.cached_audio = preloaded_audio
+        else:
+            self.cached_audio = []
+            for path in audio_paths:
+                try:
+                    audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
+                    if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
+                        audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
+                    else:
+                        audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
+                except Exception:
+                    audio = np.zeros(Config.AUDIO_LENGTH_SAMPLES, dtype=np.float32)
+                self.cached_audio.append(audio)
 
         # For validation (no augmentation), pre-compute mel tensors for max speed
         if not is_training:
@@ -554,6 +559,8 @@ def train_ablation_variant(
     lr: float = 5e-4,
     weight_decay: float = 1e-4,
     patience: int = 30,
+    preloaded_audio_train: Optional[List[np.ndarray]] = None,
+    preloaded_audio_val: Optional[List[np.ndarray]] = None,
 ) -> AblationResult:
     """
     Trains and evaluates a single ablation model variant on real dataset partitions.
@@ -571,6 +578,7 @@ def train_ablation_variant(
         use_gain=cfg.use_gain,
         use_noise=cfg.use_noise,
         augment_prob=cfg.augment_prob,
+        preloaded_audio=preloaded_audio_train,
     )
     val_ds = VS13AblationDataset(
         audio_paths=val_paths,
@@ -580,6 +588,7 @@ def train_ablation_variant(
         is_training=False,
         use_gain=False,
         use_noise=False,
+        preloaded_audio=preloaded_audio_val,
     )
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=False)
@@ -856,6 +865,26 @@ def main():
     # Calculate normalization statistics on training split only (leakage-free)
     stats = calculate_global_stats(train_paths)
 
+    logger.info(f"Pre-loading {len(all_paths)} audio files into memory...")
+    import librosa
+    master_audio = []
+    for i, path in enumerate(all_paths):
+        if i % 100 == 0: logger.info(f"  Loaded {i}/{len(all_paths)}")
+        try:
+            audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
+            if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
+                audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
+            else:
+                audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
+        except Exception:
+            audio = np.zeros(Config.AUDIO_LENGTH_SAMPLES, dtype=np.float32)
+        master_audio.append(audio)
+
+    # Re-split audio mapping directly
+    path_to_audio = {p: a for p, a in zip(all_paths, master_audio)}
+    preloaded_train = [path_to_audio[p] for p in train_paths]
+    preloaded_val = [path_to_audio[p] for p in val_paths]
+
     results = []
     for idx, cfg in enumerate(configs, 1):
         logger.info(
@@ -872,6 +901,8 @@ def main():
             epochs=args.epochs,
             batch_size=args.batch_size,
             patience=args.patience,
+            preloaded_audio_train=preloaded_train,
+            preloaded_audio_val=preloaded_val,
         )
         results.append(res)
         logger.info(

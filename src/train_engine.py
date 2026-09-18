@@ -32,20 +32,38 @@ def run_cross_validation(all_paths, all_speeds, stats: Dict[str, Any]):
     n_frames = int(np.ceil(Config.AUDIO_LENGTH_SAMPLES / Config.HOP_LENGTH))
     input_shape = (1, Config.N_MELS, n_frames)
 
+    print(f"Pre-loading {len(all_paths)} audio files into memory...", flush=True)
+    import librosa
+    master_audio = []
+    for i, path in enumerate(all_paths):
+        if i % 100 == 0: print(f"  Loaded {i}/{len(all_paths)}", flush=True)
+        try:
+            audio, _ = librosa.load(path, sr=Config.SAMPLE_RATE, mono=True)
+            if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
+                audio = audio[: Config.AUDIO_LENGTH_SAMPLES]
+            else:
+                audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)), "constant")
+        except Exception:
+            audio = np.zeros(Config.AUDIO_LENGTH_SAMPLES, dtype=np.float32)
+        master_audio.append(audio)
+
     for fold, (train_idx, val_idx) in enumerate(kf.split(paths_np, all_speeds)):
-        print(f"\n{'='*20} Fold {fold+1}/{Config.N_FOLDS} {'='*20}")
+        print(f"\n{'='*20} Fold {fold+1}/{Config.N_FOLDS} {'='*20}", flush=True)
         
         X_train, y_train = paths_np[train_idx].tolist(), all_speeds[train_idx]
         X_val, y_val = paths_np[val_idx].tolist(), all_speeds[val_idx]
         
+        audio_train = [master_audio[i] for i in train_idx]
+        audio_val = [master_audio[i] for i in val_idx]
+        
         # We reuse the highly optimized VS13AblationDataset which caches raw audio
         train_ds = VS13AblationDataset(
             audio_paths=X_train, speeds=y_train, stats_mean=mean_val, stats_std=std_val,
-            is_training=True, use_gain=True, use_noise=True, augment_prob=Config.AUGMENT_PROB
+            is_training=True, use_gain=True, use_noise=True, augment_prob=Config.AUGMENT_PROB, preloaded_audio=audio_train
         )
         val_ds = VS13AblationDataset(
             audio_paths=X_val, speeds=y_val, stats_mean=mean_val, stats_std=std_val,
-            is_training=False
+            is_training=False, preloaded_audio=audio_val
         )
         
         train_loader = DataLoader(train_ds, batch_size=Config.BATCH_SIZE, shuffle=True)
