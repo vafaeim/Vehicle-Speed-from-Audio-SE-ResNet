@@ -639,8 +639,11 @@ def train_ablation_variant(
         else:
             patience_counter += 1
 
+        if epoch % 10 == 0 or epoch == epochs:
+            logger.info(f"    Epoch {epoch:3d}/{epochs} - Val RMSE: {epoch_rmse:.2f} km/h (Best: {best_val_rmse:.2f} km/h)")
+
         if patience_counter >= patience:
-            logger.info(f"Early stopping triggered at epoch {epoch} (best RMSE: {best_val_rmse:.2f} km/h)")
+            logger.info(f"    Early stopping triggered at epoch {epoch} (best RMSE: {best_val_rmse:.2f} km/h)")
             break
 
     # Restore best weights for latency benchmark
