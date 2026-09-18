@@ -819,7 +819,11 @@ def run_ensemble_inference(
     all_fold_preds = []
     for ckpt_idx, ckpt_path in enumerate(checkpoint_candidates):
         print(f"[INFO] Loading model fold {ckpt_idx + 1}/{len(checkpoint_candidates)}: {ckpt_path or 'Initial baseline'}")
-        model = build_se_resnet(input_shape=input_shape)
+        model = build_se_resnet(
+            input_shape=input_shape,
+            dropout=Config.DROPOUT_RATE,
+            se_ratio=Config.SE_RATIO
+        )
         if ckpt_path and os.path.exists(ckpt_path):
             try:
                 state_dict = torch.load(ckpt_path, map_location=device)

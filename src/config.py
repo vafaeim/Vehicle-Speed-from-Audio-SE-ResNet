@@ -9,13 +9,14 @@ class Config:
     N_FFT = 2048
     HOP_LENGTH = 512
     
-    # --- Training Hyperparameters ---
+    # --- Training Hyperparameters (HPO-optimized, Trial #22, RMSE=7.54 km/h) ---
     BATCH_SIZE = 32
     EPOCHS = 150
     BASE_FILTERS = 96  
-    DROPOUT_RATE = 0.3
-    WEIGHT_DECAY = 1e-4
-    INIT_LR = 5e-4
+    DROPOUT_RATE = 0.10
+    WEIGHT_DECAY = 2.93e-5
+    INIT_LR = 1.91e-3
+    SE_RATIO = 8
     PATIENCE = 30
     
     # --- Augmentation ---
