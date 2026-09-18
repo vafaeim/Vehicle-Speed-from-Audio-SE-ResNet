@@ -208,6 +208,9 @@ def run_nested_inner_cv(
         val_paths = [outer_train_paths[i] for i in in_val_idx]
         val_speeds = outer_train_speeds[in_val_idx]
 
+        logger.info(f"  [Outer {outer_fold_idx+1}/{n_outer_folds}] Inner Fold {inner_fold+1}/{n_inner_folds}: "
+                     f"train={len(train_paths)}, val={len(val_paths)}")
+
         # Calculate normalization statistics from training fold only (zero-leakage)
         stats = calculate_global_stats(train_paths)
         train_ds = VS13MelDataset(train_paths, train_speeds, stats["mean"], stats["std"], is_training=True)
@@ -234,6 +237,8 @@ def run_nested_inner_cv(
 
         for epoch in range(epochs):
             model.train()
+            epoch_loss = 0.0
+            n_batches = 0
             for x_b, y_b in train_loader:
                 x_b, y_b = x_b.to(device), y_b.to(device)
                 optimizer.zero_grad()
@@ -241,6 +246,8 @@ def run_nested_inner_cv(
                 loss = criterion(pred, y_b)
                 loss.backward()
                 optimizer.step()
+                epoch_loss += loss.item()
+                n_batches += 1
             scheduler.step()
 
             # Validation evaluation
@@ -256,7 +263,13 @@ def run_nested_inner_cv(
             if epoch_val_rmse < best_val_rmse:
                 best_val_rmse = epoch_val_rmse
 
+            # verbose logging every 10 epochs + first + last
+            if epoch == 0 or (epoch + 1) % 10 == 0 or epoch == epochs - 1:
+                avg_loss = epoch_loss / max(n_batches, 1)
+                logger.info(f"    Epoch {epoch+1:3d}/{epochs} | loss={avg_loss:.4f} | val_RMSE={epoch_val_rmse:.2f} | best={best_val_rmse:.2f}")
+
         inner_rmses.append(best_val_rmse)
+        logger.info(f"  Inner Fold {inner_fold+1}/{n_inner_folds} done -> best RMSE: {best_val_rmse:.2f} km/h")
 
     return float(np.mean(inner_rmses))
 
