@@ -140,14 +140,18 @@ def run_dummy_inner_trial(
     assert loss.item() >= 0.0, f"PhysicsInformedLoss must be non-negative, got {loss.item()}"
 
     # Verify kinematic trajectory regularizer component as well
-    speed_seq = torch.cat([pred, pred + 2.0], dim=-1)  # (2, 2) sequential frames
+    # Acceleration threshold is Config.MAX_ACCELERATION (30.0 km/h/s); exceed by +15.0 to activate penalty
+    speed_seq = torch.cat([pred, pred + (Config.MAX_ACCELERATION + 15.0)], dim=-1)  # (2, 2) sequential frames
     loss_with_seq = criterion(pred, y_train, speed_seq=speed_seq)
     assert not torch.isnan(loss_with_seq) and not torch.isinf(loss_with_seq), (
         "Kinematic penalty produced NaN/Inf in PhysicsInformedLoss"
     )
+    assert loss_with_seq.item() > loss.item(), (
+        f"Kinematic acceleration penalty did not increase total loss (loss={loss.item()}, loss_with_seq={loss_with_seq.item()})"
+    )
 
-    # Backward pass
-    loss.backward()
+    # Backward pass on full composite physics-informed loss (including kinematic penalty)
+    loss_with_seq.backward()
 
     # Verify that gradients were successfully computed for parameters
     has_grad = any(p.grad is not None and torch.sum(torch.abs(p.grad)) > 0 for p in model.parameters())
@@ -299,6 +303,7 @@ def run_worker(
     n_trials: int = 1,
     is_dummy: bool = False,
     outer_fold: int = 0,
+    outer_folds: int = 5,
     inner_folds: int = 3,
     epochs: int = 20,
     batch_size: int = 16,
@@ -316,17 +321,34 @@ def run_worker(
         device = torch.device("cpu")
         print(f"[{gpu_id}] Dummy Mode active: strictly bound to CPU device.")
     else:
-        # Bind explicitly to target GPU
+        # Bind explicitly to target GPU with graceful fallback for single-GPU systems
         if torch.cuda.is_available():
-            torch.cuda.set_device(gpu_id)
-            device = torch.device(gpu_id)
-            print(f"[{gpu_id}] Successfully bound to GPU device: {device}")
+            num_gpus = torch.cuda.device_count()
+            ordinal = int(gpu_id.split(":")[-1]) if ":" in str(gpu_id) else 0
+            if ordinal < num_gpus:
+                torch.cuda.set_device(ordinal)
+                device = torch.device(f"cuda:{ordinal}")
+                print(f"[{gpu_id}] Successfully bound to GPU device: {device}")
+            else:
+                fallback_ordinal = 0
+                torch.cuda.set_device(fallback_ordinal)
+                device = torch.device(f"cuda:{fallback_ordinal}")
+                print(
+                    f"[{gpu_id}] Requested {gpu_id} but only {num_gpus} GPU(s) available; "
+                    f"safely sharing cuda:{fallback_ordinal}."
+                )
         else:
             device = torch.device("cpu")
             print(f"[{gpu_id}] CUDA unavailable; operating on CPU device.")
 
     # Attach to shared persistent Optuna study
-    sampler = TPESampler(seed=42 if is_dummy else None)
+    # Seed sampler independently per worker in dummy mode to ensure non-redundant exploration
+    if is_dummy:
+        worker_id = int(gpu_id.split(":")[-1]) if ":" in str(gpu_id) else 0
+        sampler = TPESampler(seed=42 + worker_id)
+    else:
+        sampler = TPESampler(seed=None)
+
     study = optuna.load_study(
         study_name=study_name,
         storage=storage_url,
@@ -369,7 +391,7 @@ def run_worker(
                 bound_weight=bound_weight,
                 data_dir=data_dir,
                 outer_fold_idx=outer_fold,
-                n_outer_folds=5,
+                n_outer_folds=outer_folds,
                 n_inner_folds=inner_folds,
                 epochs=epochs,
                 batch_size=batch_size,
@@ -459,7 +481,7 @@ def main():
 
     # In dummy mode: override settings for rapid (<5s) CPU execution
     if args.dummy:
-        n_trials = 1
+        n_trials = args.n_trials if args.n_trials != 20 else 1
         epochs = 1
         batch_size = 2
         base_filters = 16
@@ -469,7 +491,7 @@ def main():
         print("  - Model: Factorized 1D-SE (Factorized1DNet)")
         print("  - Loss: PhysicsInformedLoss (Cauchy + Kinematic + Boundary)")
         print("  - Data: Synthetically generated random tensors (batch_size=2)")
-        print("  - Trials: 1 per worker process (2 total)")
+        print(f"  - Trials: {n_trials} per worker process ({n_trials * 2} total)")
         print(f"  - Storage Backend: {args.storage}")
         print("=" * 70)
     else:
@@ -504,6 +526,7 @@ def main():
         args=("cuda:0", args.study_name, args.storage, n_trials, args.dummy),
         kwargs={
             "outer_fold": args.outer_fold_idx,
+            "outer_folds": args.outer_folds,
             "inner_folds": args.inner_folds,
             "epochs": epochs,
             "batch_size": batch_size,
@@ -516,6 +539,7 @@ def main():
         args=("cuda:1", args.study_name, args.storage, n_trials, args.dummy),
         kwargs={
             "outer_fold": args.outer_fold_idx,
+            "outer_folds": args.outer_folds,
             "inner_folds": args.inner_folds,
             "epochs": epochs,
             "batch_size": batch_size,
