@@ -183,12 +183,15 @@ def run_nested_inner_cv(
     2. Performs K_inner = 3 fold CV on outer training data.
     3. Returns mean inner validation RMSE across the 3 folds.
     """
-    from src.utils import calculate_global_stats, get_all_audio_paths_and_labels
+    from src.utils import calculate_global_stats, get_official_train_test_split
 
     if not data_dir or not os.path.isdir(data_dir):
         raise FileNotFoundError(f"VS13 dataset directory not found: {data_dir}")
 
-    all_paths, all_speeds = get_all_audio_paths_and_labels(data_dir)
+    train_paths, train_speeds, _, test_paths, test_speeds, _ = get_official_train_test_split(data_dir)
+    all_paths = list(train_paths) + list(test_paths)
+    all_speeds = np.concatenate([train_speeds, test_speeds])
+    
     if len(all_paths) == 0:
         raise ValueError(f"No audio files found in {data_dir}")
 
@@ -365,14 +368,17 @@ def evaluate_outer_folds(
     Evaluates optimal hyperparameters across all K_outer = 5 folds
     to establish the unbiased nested cross-validation generalization RMSE.
     """
-    from src.utils import calculate_global_stats, get_all_audio_paths_and_labels
+    from src.utils import calculate_global_stats, get_official_train_test_split
 
     study = optuna.load_study(study_name=study_name, storage=storage_url)
     best_params = study.best_params
     print(f"[Nested CV Evaluation] Best Hyperparameters: {best_params}")
 
     device = torch.device(device_str)
-    all_paths, all_speeds = get_all_audio_paths_and_labels(data_dir)
+    
+    train_paths, train_speeds, _, test_paths, test_speeds, _ = get_official_train_test_split(data_dir)
+    all_paths = list(train_paths) + list(test_paths)
+    all_speeds = np.concatenate([train_speeds, test_speeds])
 
     outer_kfold = KFold(n_splits=n_outer_folds, shuffle=True, random_state=Config.SEED)
     outer_rmses: List[float] = []

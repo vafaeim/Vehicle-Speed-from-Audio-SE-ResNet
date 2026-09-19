@@ -5,41 +5,59 @@ import librosa
 import json
 from .config import Config
 
-def get_all_audio_paths_and_labels(data_root):
+def get_official_train_test_split(data_root):
     """
-    Parses the VS13 dataset directory structure.
-    Expected structure: data_root/<Vehicle_Class>/Train_valid_split.txt
+    Parses the VS13 dataset directory structure and strictly honors the 
+    official Train_valid_split.txt file provided by the dataset authors.
+    Returns: (train_paths, train_speeds, train_classes, test_paths, test_speeds, test_classes)
     """
-    all_paths = []
-    all_speeds = []
+    train_paths, train_speeds, train_classes = [], [], []
+    test_paths, test_speeds, test_classes = [], [], []
     
-    vehicle_folders = [d for d in os.listdir(data_root) if os.path.isdir(os.path.join(data_root, d))]
+    vehicle_folders = sorted([d for d in os.listdir(data_root) if os.path.isdir(os.path.join(data_root, d))])
 
     for vehicle_folder in vehicle_folders:
         vehicle_path = os.path.join(data_root, vehicle_folder)
         split_file_path = os.path.join(vehicle_path, 'Train_valid_split.txt')
+        
         if not os.path.exists(split_file_path): 
+            # Fallback for incorrectly formatted folders
+            for fname in os.listdir(vehicle_path):
+                if fname.endswith(".wav"):
+                    match = re.match(r"([a-zA-Z0-9]+)_(\d+)\.wav", fname)
+                    if match:
+                        train_paths.append(os.path.join(vehicle_path, fname))
+                        train_speeds.append(int(match.group(2)))
+                        train_classes.append(vehicle_folder)
             continue
 
         with open(split_file_path, 'r') as f:
             for line in f:
                 parts = line.strip().split()
                 if len(parts) >= 2:
-                    # format: filename split_type (e.g., Mazda3_50 train)
                     base_name = parts[0]
+                    split_type = parts[1].lower()
                     wav_file = os.path.join(vehicle_path, base_name + '.wav')
                     
                     if not os.path.exists(wav_file): 
                         continue
                     
-                    # Extract speed from filename (e.g., Class_50.wav -> 50)
                     match = re.match(r'([a-zA-Z0-9]+)_(\d+)\.wav', os.path.basename(wav_file))
                     if match:
                         speed = int(match.group(2))
-                        all_paths.append(wav_file)
-                        all_speeds.append(speed)
+                        if split_type == 'train':
+                            train_paths.append(wav_file)
+                            train_speeds.append(speed)
+                            train_classes.append(vehicle_folder)
+                        elif split_type == 'valid':
+                            test_paths.append(wav_file)
+                            test_speeds.append(speed)
+                            test_classes.append(vehicle_folder)
 
-    return all_paths, np.array(all_speeds)
+    return (
+        np.array(train_paths), np.array(train_speeds, dtype=np.float32), np.array(train_classes),
+        np.array(test_paths), np.array(test_speeds, dtype=np.float32), np.array(test_classes)
+    )
 
 def calculate_global_stats(audio_paths, save_path=None):
     """

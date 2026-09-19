@@ -884,19 +884,16 @@ def main():
             "Please provide a valid path via --data_dir, or run with --dummy for fast verification."
         )
 
-    from sklearn.model_selection import train_test_split
-    from src.utils import calculate_global_stats, get_all_audio_paths_and_labels
+    from src.utils import calculate_global_stats, get_official_train_test_split
 
-    all_paths, all_speeds = get_all_audio_paths_and_labels(args.data_dir)
-    if len(all_paths) == 0:
+    train_paths, train_speeds, _, val_paths, val_speeds, _ = get_official_train_test_split(args.data_dir)
+    
+    if len(train_paths) == 0:
         raise ValueError(f"No audio files discovered in dataset directory: {args.data_dir}")
 
-    train_paths, val_paths, train_speeds, val_speeds = train_test_split(
-        all_paths, all_speeds, test_size=args.val_split, random_state=args.seed
-    )
-
+    all_paths = np.concatenate([train_paths, val_paths])
     logger.info(
-        f"Dataset loaded: {len(all_paths)} clips total ({len(train_paths)} train, {len(val_paths)} val)"
+        f"Dataset loaded: {len(all_paths)} clips total ({len(train_paths)} train, {len(val_paths)} val (test))"
     )
 
     # Calculate normalization statistics on training split only (leakage-free)
