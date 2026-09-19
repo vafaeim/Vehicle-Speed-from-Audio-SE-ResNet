@@ -189,8 +189,11 @@ def run_nested_inner_cv(
         raise FileNotFoundError(f"VS13 dataset directory not found: {data_dir}")
 
     train_paths, train_speeds, _, test_paths, test_speeds, _ = get_official_train_test_split(data_dir)
-    all_paths = list(train_paths) + list(test_paths)
-    all_speeds = np.concatenate([train_speeds, test_speeds])
+    
+    # STRICT ISOLATION: The HPO process must NEVER see the test_paths.
+    # We only use the 319 training samples for Nested CV.
+    all_paths = list(train_paths)
+    all_speeds = np.array(train_speeds)
     
     if len(all_paths) == 0:
         raise ValueError(f"No audio files found in {data_dir}")
@@ -377,8 +380,10 @@ def evaluate_outer_folds(
     device = torch.device(device_str)
     
     train_paths, train_speeds, _, test_paths, test_speeds, _ = get_official_train_test_split(data_dir)
-    all_paths = list(train_paths) + list(test_paths)
-    all_speeds = np.concatenate([train_speeds, test_speeds])
+    
+    # STRICT ISOLATION
+    all_paths = list(train_paths)
+    all_speeds = np.array(train_speeds)
 
     outer_kfold = SortedKFold(n_splits=n_outer_folds)
     outer_rmses: List[float] = []
