@@ -183,7 +183,7 @@ def run_nested_inner_cv(
     2. Performs K_inner = 3 fold CV on outer training data.
     3. Returns mean inner validation RMSE across the 3 folds.
     """
-    from src.utils import calculate_global_stats, get_official_train_test_split
+    from src.utils import calculate_global_stats, get_official_train_test_split, SortedKFold
 
     if not data_dir or not os.path.isdir(data_dir):
         raise FileNotFoundError(f"VS13 dataset directory not found: {data_dir}")
@@ -196,18 +196,18 @@ def run_nested_inner_cv(
         raise ValueError(f"No audio files found in {data_dir}")
 
     # Outer split: K_outer = 5
-    outer_kfold = KFold(n_splits=n_outer_folds, shuffle=True, random_state=Config.SEED)
-    splits = list(outer_kfold.split(all_paths))
+    outer_kfold = SortedKFold(n_splits=n_outer_folds)
+    splits = list(outer_kfold.split(all_paths, y=all_speeds))
     outer_train_indices, _ = splits[outer_fold_idx]
 
     outer_train_paths = [all_paths[i] for i in outer_train_indices]
     outer_train_speeds = all_speeds[outer_train_indices]
 
     # Inner split: K_inner = 3 on outer train set
-    inner_kfold = KFold(n_splits=n_inner_folds, shuffle=True, random_state=Config.SEED)
+    inner_kfold = SortedKFold(n_splits=n_inner_folds)
     inner_rmses: List[float] = []
 
-    for inner_fold, (in_train_idx, in_val_idx) in enumerate(inner_kfold.split(outer_train_paths)):
+    for inner_fold, (in_train_idx, in_val_idx) in enumerate(inner_kfold.split(outer_train_paths, y=outer_train_speeds)):
         train_paths = [outer_train_paths[i] for i in in_train_idx]
         train_speeds = outer_train_speeds[in_train_idx]
         val_paths = [outer_train_paths[i] for i in in_val_idx]
@@ -368,7 +368,7 @@ def evaluate_outer_folds(
     Evaluates optimal hyperparameters across all K_outer = 5 folds
     to establish the unbiased nested cross-validation generalization RMSE.
     """
-    from src.utils import calculate_global_stats, get_official_train_test_split
+    from src.utils import calculate_global_stats, get_official_train_test_split, SortedKFold
 
     study = optuna.load_study(study_name=study_name, storage=storage_url)
     best_params = study.best_params
@@ -380,10 +380,10 @@ def evaluate_outer_folds(
     all_paths = list(train_paths) + list(test_paths)
     all_speeds = np.concatenate([train_speeds, test_speeds])
 
-    outer_kfold = KFold(n_splits=n_outer_folds, shuffle=True, random_state=Config.SEED)
+    outer_kfold = SortedKFold(n_splits=n_outer_folds)
     outer_rmses: List[float] = []
 
-    for fold_idx, (train_idx, test_idx) in enumerate(outer_kfold.split(all_paths)):
+    for fold_idx, (train_idx, test_idx) in enumerate(outer_kfold.split(all_paths, y=all_speeds)):
         train_paths = [all_paths[i] for i in train_idx]
         train_speeds = all_speeds[train_idx]
         test_paths = [all_paths[i] for i in test_idx]

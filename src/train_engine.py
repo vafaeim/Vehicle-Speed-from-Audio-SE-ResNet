@@ -134,7 +134,8 @@ def run_cross_validation(all_paths, all_speeds, stats: Dict[str, Any]):
     except RuntimeError:
         pass
 
-    kf = KFold(n_splits=Config.N_FOLDS, shuffle=True, random_state=Config.SEED)
+    from src.utils import SortedKFold
+    kf = SortedKFold(n_splits=Config.N_FOLDS)
     paths_np = np.array(all_paths)
     os.makedirs(Config.CHECKPOINT_DIR, exist_ok=True)
 

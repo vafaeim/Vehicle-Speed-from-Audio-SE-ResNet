@@ -59,6 +59,37 @@ def get_official_train_test_split(data_root):
         np.array(test_paths), np.array(test_speeds, dtype=np.float32), np.array(test_classes)
     )
 
+class SortedKFold:
+    """
+    Implements continuous stratification by sorting samples by target value (speed),
+    chunking them into batches of size K, and distributing one sample per batch to each fold.
+    This eliminates covariate shift across folds for continuous targets.
+    """
+    def __init__(self, n_splits=10):
+        self.n_splits = n_splits
+
+    def split(self, X, y=None, groups=None):
+        if y is None:
+            raise ValueError("SortedKFold requires the target variable (y) for stratification.")
+        
+        # Sort indices by speed ascending
+        sorted_idx = np.argsort(y)
+        
+        # Initialize folds
+        folds = [[] for _ in range(self.n_splits)]
+        
+        # Distribute sequentially
+        for i, idx in enumerate(sorted_idx):
+            fold_idx = i % self.n_splits
+            folds[fold_idx].append(idx)
+            
+        # Yield (train_idx, val_idx)
+        for i in range(self.n_splits):
+            val_idx = np.array(folds[i])
+            train_idx = np.concatenate([folds[j] for j in range(self.n_splits) if j != i])
+            yield train_idx, val_idx
+
+
 def calculate_global_stats(audio_paths, save_path=None):
     """
     Calculates mean and std of Mel Spectrograms across the dataset 
