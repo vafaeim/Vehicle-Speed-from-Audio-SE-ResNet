@@ -795,11 +795,34 @@ def run_ensemble_inference(
     device = torch.device(device_str) if device_str else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[INFO] Initializing inference on device: {device} (AMP: {enable_amp})")
 
-    paths, speeds, classes = get_all_audio_paths_labels_and_classes(data_dir)
-    if len(paths) == 0:
+    paths_all, speeds_all, classes_all = get_all_audio_paths_labels_and_classes(data_dir)
+    if len(paths_all) == 0:
         raise FileNotFoundError(f"No valid audio samples found in dataset directory: {data_dir}")
 
-    print(f"[INFO] Discovered {len(paths)} audio files across {len(set(classes))} vehicle categories.")
+    # Load the pure held-out test set split and training stats
+    split_file = "dataset_splits.json"
+    if not os.path.exists(split_file):
+        raise FileNotFoundError(f"Missing {split_file}! You must run main.py first to generate the test split.")
+    
+    with open(split_file, "r") as f:
+        splits = json.load(f)
+    
+    test_paths_set = set(splits["test_paths"])
+    stats = splits["stats"]
+    
+    # Filter dataset to only the unseen test set
+    paths, speeds, classes = [], [], []
+    for p, s, c in zip(paths_all, speeds_all, classes_all):
+        if p in test_paths_set:
+            paths.append(p)
+            speeds.append(s)
+            classes.append(c)
+            
+    paths = np.array(paths)
+    speeds = np.array(speeds, dtype=np.float32)
+    classes = np.array(classes)
+
+    print(f"[INFO] Discovered {len(paths_all)} total files. Filtered down to {len(paths)} pure held-out TEST files.")
 
     # Locate checkpoints
     checkpoint_candidates = []
@@ -812,12 +835,10 @@ def run_ensemble_inference(
         print(f"[WARN] No checkpoints found in {weights_dir}. Instantiating initialized SE-ResNet for evaluation.")
         checkpoint_candidates = [None]
 
-    # Calculate normalization statistics on all paths
-    from src.utils import calculate_global_stats
+    # Use the loaded training stats to prevent data leakage in normalization
     from src.ablation_runner import VS13AblationDataset
     from torch.utils.data import DataLoader
 
-    stats = calculate_global_stats(paths)
     mean_val = np.array(stats["mean"], dtype=np.float32)
     std_val = np.array(stats["std"], dtype=np.float32)
 
