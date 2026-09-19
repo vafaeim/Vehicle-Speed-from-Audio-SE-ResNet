@@ -42,7 +42,8 @@ if repo_root not in sys.path:
 
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from src.config import Config
-from src.models_torch import SEResNet, build_se_resnet
+from src.models import Factorized1DNet, build_model, build_se_resnet
+from src.losses import PhysicsInformedLoss
 
 
 logging.basicConfig(
@@ -120,45 +121,85 @@ def run_dummy_inner_trial(
     weight_decay: float,
     se_ratio: int,
     dropout: float,
+    physics_loss_weight: float = 0.10,
+    base_filters: int = 16,
+    audio_length: int = 4000,
 ) -> float:
     """
-    Executes a single synthetic dummy training and evaluation step strictly on CPU.
-    Validates end-to-end model forward pass, gradient calculation, optimizer step,
-    and RMSE metric computation without accessing CUDA or the disk.
+    Executes a fast synthetic dummy training and evaluation step strictly on CPU.
+    Validates end-to-end Factorized 1D-SE model forward pass, PhysicsInformedLoss computation
+    (both regression, boundary, and kinematic components), backward gradient flow,
+    optimizer step, and RMSE metric computation without accessing CUDA or disk.
     """
-    model = SEResNet(
-        in_channels=1,
-        base_filters=96,
-        stage_blocks=[2, 2, 2],
-        stage_channels=[96, 192, 384],
-        use_se=True,
-        se_ratio=se_ratio,
+    # Strictly force CPU device
+    device = torch.device("cpu")
+
+    # 1. Instantiate the Factorized 1D-SE architecture
+    model = Factorized1DNet(
+        in_channels=getattr(Config, "IN_CHANNELS", 1),
+        base_filters=base_filters,
+        se_reduction=se_ratio,
         dropout=dropout,
+        kernel_size=getattr(Config, "KERNEL_SIZE_TIME", 7),
+    ).to(device)
+
+    # 2. Instantiate PhysicsInformedLoss with sampled physics_weight
+    criterion = PhysicsInformedLoss(
+        gamma=getattr(Config, "CAUCHY_GAMMA", 5.0),
+        physics_weight=physics_loss_weight,
+        bound_weight=getattr(Config, "BOUND_WEIGHT", 0.05),
+        max_accel=getattr(Config, "MAX_ACCELERATION", 30.0),
+        loss_type=getattr(Config, "LOSS_TYPE", "cauchy"),
+        huber_delta=getattr(Config, "HUBER_DELTA", 10.0),
+        speed_min=getattr(Config, "SPEED_MIN", 10.0),
+        speed_max=getattr(Config, "SPEED_MAX", 140.0),
     ).to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    criterion = nn.MSELoss()
 
-    # Synthetic batch of size 2 matching Mel-spectrogram shape: (2, 1, 128, 313)
-    x_train = torch.randn(2, 1, 128, 313, device=device)
-    y_train = torch.tensor([50.0, 75.0], dtype=torch.float32, device=device)
+    # Synthetic batch of size 2 matching 1D audio: (2, 1, audio_length)
+    x_train = torch.randn(2, 1, audio_length, device=device)
+    y_train = torch.tensor([[50.0], [75.0]], dtype=torch.float32, device=device)
 
-    x_val = torch.randn(2, 1, 128, 313, device=device)
-    y_val = torch.tensor([52.0, 72.0], dtype=torch.float32, device=device)
+    x_val = torch.randn(2, 1, audio_length, device=device)
+    y_val = torch.tensor([[52.0], [72.0]], dtype=torch.float32, device=device)
 
     # 1. Training step (1 epoch)
     model.train()
     optimizer.zero_grad()
-    train_out = model(x_train).view(-1)
+    train_out = model(x_train)
+    assert train_out.shape == (2, 1), f"Expected train_out shape (2, 1), got {train_out.shape}"
+
     train_loss = criterion(train_out, y_train)
-    train_loss.backward()
+    assert not torch.isnan(train_loss), "PhysicsInformedLoss returned NaN"
+    assert not torch.isinf(train_loss), "PhysicsInformedLoss returned Inf"
+    assert train_loss.item() >= 0.0, f"PhysicsInformedLoss must be non-negative, got {train_loss.item()}"
+
+    # Verify kinematic trajectory regularizer component
+    max_accel = getattr(Config, "MAX_ACCELERATION", 30.0)
+    speed_seq = torch.cat([train_out, train_out + (max_accel + 15.0)], dim=-1)  # (2, 2) sequential frames
+    loss_with_seq = criterion(train_out, y_train, speed_seq=speed_seq)
+    assert not torch.isnan(loss_with_seq) and not torch.isinf(loss_with_seq), (
+        "Kinematic penalty produced NaN/Inf in PhysicsInformedLoss"
+    )
+    assert loss_with_seq.item() > train_loss.item(), (
+        f"Kinematic acceleration penalty did not increase total loss (loss={train_loss.item()}, loss_with_seq={loss_with_seq.item()})"
+    )
+
+    # Backward pass on full composite physics loss
+    loss_with_seq.backward()
+
+    # Verify gradients
+    has_grad = any(p.grad is not None and torch.sum(torch.abs(p.grad)) > 0 for p in model.parameters())
+    assert has_grad, "Backward pass failed to propagate gradients through Factorized 1D-SE network"
+
     optimizer.step()
 
-    # 2. Validation evaluation
+    # 2. Validation evaluation (RMSE in km/h)
     model.eval()
     with torch.no_grad():
-        val_out = model(x_val).view(-1)
-        val_mse = criterion(val_out, y_val).item()
+        val_out = model(x_val)
+        val_mse = torch.mean((val_out - y_val) ** 2).item()
         val_rmse = float(np.sqrt(val_mse))
 
     return val_rmse
@@ -170,7 +211,8 @@ def run_nested_inner_cv(
     weight_decay: float,
     se_ratio: int,
     dropout: float,
-    data_dir: Optional[str],
+    physics_loss_weight: float = 0.10,
+    data_dir: Optional[str] = None,
     outer_fold_idx: int = 0,
     n_outer_folds: int = 5,
     n_inner_folds: int = 3,
@@ -178,9 +220,9 @@ def run_nested_inner_cv(
     batch_size: int = 32,
 ) -> float:
     """
-    Executes Nested CV inner loop on real VS13 dataset:
-    1. Extracts outer training partition (320 samples).
-    2. Performs K_inner = 3 fold CV on outer training data.
+    Executes Nested CV inner loop on real VS13 dataset with Factorized 1D-SE and PhysicsInformedLoss:
+    1. Extracts outer training partition (319 samples) with strict test-set isolation.
+    2. Performs continuous stratified K_inner = 3 fold CV via SortedKFold.
     3. Returns mean inner validation RMSE across the 3 folds.
     """
     from src.utils import calculate_global_stats, get_official_train_test_split, SortedKFold
@@ -227,19 +269,26 @@ def run_nested_inner_cv(
         train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
-        model = SEResNet(
+        model = Factorized1DNet(
             in_channels=1,
-            base_filters=96,
-            stage_blocks=[2, 2, 2],
-            stage_channels=[96, 192, 384],
-            use_se=True,
-            se_ratio=se_ratio,
+            base_filters=getattr(Config, "BASE_FILTERS", 64),
+            se_reduction=se_ratio,
             dropout=dropout,
+            kernel_size=getattr(Config, "KERNEL_SIZE_TIME", 7),
         ).to(device)
 
         optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0.0)
-        criterion = nn.MSELoss()
+        criterion = PhysicsInformedLoss(
+            gamma=getattr(Config, "CAUCHY_GAMMA", 5.0),
+            physics_weight=physics_loss_weight,
+            bound_weight=getattr(Config, "BOUND_WEIGHT", 0.05),
+            max_accel=getattr(Config, "MAX_ACCELERATION", 30.0),
+            loss_type=getattr(Config, "LOSS_TYPE", "cauchy"),
+            huber_delta=getattr(Config, "HUBER_DELTA", 10.0),
+            speed_min=getattr(Config, "SPEED_MIN", 10.0),
+            speed_max=getattr(Config, "SPEED_MAX", 140.0),
+        ).to(device)
 
         best_val_rmse = float("inf")
 
@@ -250,7 +299,7 @@ def run_nested_inner_cv(
             for x_b, y_b in train_loader:
                 x_b, y_b = x_b.to(device), y_b.to(device)
                 optimizer.zero_grad()
-                pred = model(x_b).view(-1)
+                pred = model(x_b).squeeze(-1)
                 loss = criterion(pred, y_b)
                 loss.backward()
                 optimizer.step()
@@ -264,7 +313,7 @@ def run_nested_inner_cv(
             with torch.no_grad():
                 for x_v, y_v in val_loader:
                     x_v, y_v = x_v.to(device), y_v.to(device)
-                    v_pred = model(x_v).view(-1)
+                    v_pred = model(x_v).squeeze(-1)
                     val_sq_errors.extend((v_pred - y_v).pow(2).cpu().numpy().tolist())
 
             epoch_val_rmse = float(np.sqrt(np.mean(val_sq_errors))) if val_sq_errors else float("inf")
@@ -328,6 +377,7 @@ def run_worker(
         weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
         se_ratio = trial.suggest_categorical("se_ratio", [8, 16, 32])
         dropout = trial.suggest_float("dropout", 0.10, 0.50, step=0.05)
+        physics_loss_weight = trial.suggest_float("physics_loss_weight", 0.01, 0.50)
 
         if is_dummy:
             val_rmse = run_dummy_inner_trial(
@@ -336,6 +386,7 @@ def run_worker(
                 weight_decay=weight_decay,
                 se_ratio=se_ratio,
                 dropout=dropout,
+                physics_loss_weight=physics_loss_weight,
             )
         else:
             val_rmse = run_nested_inner_cv(
@@ -344,6 +395,7 @@ def run_worker(
                 weight_decay=weight_decay,
                 se_ratio=se_ratio,
                 dropout=dropout,
+                physics_loss_weight=physics_loss_weight,
                 data_dir=data_dir,
                 outer_fold_idx=outer_fold,
                 n_outer_folds=5,
@@ -401,26 +453,34 @@ def evaluate_outer_folds(
         train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
         test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
-        model = SEResNet(
+        model = Factorized1DNet(
             in_channels=1,
-            base_filters=96,
-            stage_blocks=[2, 2, 2],
-            stage_channels=[96, 192, 384],
-            use_se=True,
-            se_ratio=best_params["se_ratio"],
+            base_filters=getattr(Config, "BASE_FILTERS", 64),
+            se_reduction=best_params["se_ratio"],
             dropout=best_params["dropout"],
+            kernel_size=getattr(Config, "KERNEL_SIZE_TIME", 7),
         ).to(device)
 
+        phys_w = best_params.get("physics_loss_weight", getattr(Config, "PHYSICS_LOSS_WEIGHT", 0.10))
         optimizer = optim.AdamW(model.parameters(), lr=best_params["lr"], weight_decay=best_params["weight_decay"])
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0.0)
-        criterion = nn.MSELoss()
+        criterion = PhysicsInformedLoss(
+            gamma=getattr(Config, "CAUCHY_GAMMA", 5.0),
+            physics_weight=phys_w,
+            bound_weight=getattr(Config, "BOUND_WEIGHT", 0.05),
+            max_accel=getattr(Config, "MAX_ACCELERATION", 30.0),
+            loss_type=getattr(Config, "LOSS_TYPE", "cauchy"),
+            huber_delta=getattr(Config, "HUBER_DELTA", 10.0),
+            speed_min=getattr(Config, "SPEED_MIN", 10.0),
+            speed_max=getattr(Config, "SPEED_MAX", 140.0),
+        ).to(device)
 
         for _ in range(epochs):
             model.train()
             for x_b, y_b in train_loader:
                 x_b, y_b = x_b.to(device), y_b.to(device)
                 optimizer.zero_grad()
-                pred = model(x_b).view(-1)
+                pred = model(x_b).squeeze(-1)
                 loss = criterion(pred, y_b)
                 loss.backward()
                 optimizer.step()
@@ -431,7 +491,7 @@ def evaluate_outer_folds(
         with torch.no_grad():
             for x_t, y_t in test_loader:
                 x_t, y_t = x_t.to(device), y_t.to(device)
-                t_pred = model(x_t).view(-1)
+                t_pred = model(x_t).squeeze(-1)
                 sq_errors.extend((t_pred - y_t).pow(2).cpu().numpy().tolist())
 
         fold_rmse = float(np.sqrt(np.mean(sq_errors)))

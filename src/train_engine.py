@@ -16,7 +16,8 @@ from sklearn.model_selection import KFold
 import torch.multiprocessing as mp
 
 from .config import Config
-from .models_torch import build_se_resnet
+from .models import build_se_resnet, Factorized1DNet, build_model
+from .losses import PhysicsInformedLoss
 from .ablation_runner import VS13AblationDataset
 
 def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_audio, mean_val, std_val, input_shape):
@@ -60,8 +61,8 @@ def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_a
         
         model = build_se_resnet(
             input_shape=input_shape,
-            dropout=Config.DROPOUT_RATE,
-            se_ratio=Config.SE_RATIO
+            dropout=getattr(Config, 'DROPOUT', getattr(Config, 'DROPOUT_RATE', 0.2)),
+            se_ratio=getattr(Config, 'SE_REDUCTION', getattr(Config, 'SE_RATIO', 8))
         ).to(device)
         
         optimizer = optim.AdamW(
@@ -74,7 +75,17 @@ def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_a
             optimizer, 
             T_max=Config.EPOCHS * len(train_loader)
         )
-        criterion = nn.MSELoss()
+        criterion_physics = PhysicsInformedLoss(
+            gamma=getattr(Config, "CAUCHY_GAMMA", 5.0),
+            physics_weight=getattr(Config, "PHYSICS_LOSS_WEIGHT", getattr(Config, "PHYSICS_WEIGHT", 0.10)),
+            bound_weight=getattr(Config, "BOUND_WEIGHT", 0.05),
+            max_accel=getattr(Config, "MAX_ACCELERATION", 30.0),
+            loss_type=getattr(Config, "LOSS_TYPE", "cauchy"),
+            huber_delta=getattr(Config, "HUBER_DELTA", 10.0),
+            speed_min=getattr(Config, "SPEED_MIN", 10.0),
+            speed_max=getattr(Config, "SPEED_MAX", 140.0),
+        ).to(device)
+        criterion_eval_mse = nn.MSELoss()
 
         best_val_rmse = float('inf')
         best_state_dict = None
@@ -87,7 +98,7 @@ def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_a
                 X_b, y_b = X_b.to(device), y_b.to(device)
                 optimizer.zero_grad()
                 preds = model(X_b).squeeze(-1)
-                loss = criterion(preds, y_b)
+                loss = criterion_physics(preds, y_b)
                 loss.backward()
                 optimizer.step()
                 scheduler.step()
@@ -97,15 +108,20 @@ def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_a
             
             model.eval()
             val_loss = 0.0
+            val_mse_sum = 0.0
+            val_samples = 0
             with torch.no_grad():
                 for X_b, y_b in val_loader:
                     X_b, y_b = X_b.to(device), y_b.to(device)
                     preds = model(X_b).squeeze(-1)
-                    loss = criterion(preds, y_b)
-                    val_loss += loss.item() * X_b.size(0)
+                    phys_loss = criterion_physics(preds, y_b)
+                    val_loss += phys_loss.item() * X_b.size(0)
+                    mse_batch = criterion_eval_mse(preds, y_b)
+                    val_mse_sum += mse_batch.item() * X_b.size(0)
+                    val_samples += X_b.size(0)
             
             val_loss /= len(val_loader.dataset)
-            val_rmse = np.sqrt(val_loss)
+            val_rmse = float(np.sqrt(val_mse_sum / max(1, val_samples)))
             
             if val_rmse < best_val_rmse:
                 best_val_rmse = val_rmse
@@ -115,7 +131,7 @@ def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_a
                 patience_counter += 1
                 
             if epoch % 10 == 0 or epoch == Config.EPOCHS - 1:
-                print(f"[{device}] Fold {fold+1} Epoch {epoch:3d}/{Config.EPOCHS} - Train MSE: {train_loss:.2f} - Val RMSE: {val_rmse:.2f} (Best: {best_val_rmse:.2f})", flush=True)
+                print(f"[{device}] Fold {fold+1} Epoch {epoch:3d}/{Config.EPOCHS} - Train PhysLoss: {train_loss:.2f} - Val PhysLoss: {val_loss:.2f} - Val RMSE: {val_rmse:.2f} km/h (Best: {best_val_rmse:.2f} km/h)", flush=True)
                 
             if patience_counter >= Config.PATIENCE:
                 print(f"[{device}] Fold {fold+1} Early stopping at epoch {epoch}", flush=True)
