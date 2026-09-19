@@ -5,7 +5,7 @@ import sys
 
 def inject_best_params():
     db_path = "sqlite:///optuna_study.db"
-    study_name = "se_resnet_vs13"
+    study_name = "se_resnet_vs13_hpo"
     
     try:
         study = optuna.load_study(study_name=study_name, storage=db_path)
