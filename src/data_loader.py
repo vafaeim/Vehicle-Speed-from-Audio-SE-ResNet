@@ -46,8 +46,6 @@ def preprocess_audio(file_path_bytes, stats_mean, stats_std, is_training):
         audio = apply_augmentations(audio)
         
     # Normalize amplitude
-    if np.max(np.abs(audio)) > 0:
-        audio = audio / np.max(np.abs(audio))
         
     # Mel Spectrogram
     mel = librosa.feature.melspectrogram(

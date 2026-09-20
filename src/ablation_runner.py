@@ -361,9 +361,6 @@ class VS13AblationDataset(Dataset):
         if not is_training:
             self.cached_tensors = []
             for audio in self.cached_audio:
-                max_val = np.max(np.abs(audio))
-                if max_val > 0:
-                    audio = audio / max_val
                 mel = librosa.feature.melspectrogram(
                     y=audio, sr=Config.SAMPLE_RATE,
                     n_fft=Config.N_FFT, hop_length=Config.HOP_LENGTH, n_mels=Config.N_MELS,
@@ -396,9 +393,6 @@ class VS13AblationDataset(Dataset):
             augment_prob=self.augment_prob,
         )
 
-        max_val = np.max(np.abs(audio))
-        if max_val > 0:
-            audio = audio / max_val
 
         mel = librosa.feature.melspectrogram(
             y=audio, sr=Config.SAMPLE_RATE,
