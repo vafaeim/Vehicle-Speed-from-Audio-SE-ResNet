@@ -2,18 +2,27 @@ import optuna
 import re
 import os
 import sys
+import argparse
 
-def inject_best_params():
-    db_path = "sqlite:///optuna_study.db"
-    study_name = "se_resnet_vs13_hpo"
-    
-    try:
-        study = optuna.load_study(study_name=study_name, storage=db_path)
-        p = study.best_params
-        print(f"[Inject HPO] Found best params: {p}")
-    except Exception as e:
-        print(f"[Inject HPO] Could not load study from {db_path}: {e}")
-        sys.exit(1)
+def inject_best_params(args):
+    # If any manual flags are provided, bypass the database
+    if args.lr is not None or args.weight_decay is not None or args.dropout is not None or args.se_ratio is not None:
+        p = {}
+        if args.lr is not None: p['lr'] = args.lr
+        if args.weight_decay is not None: p['weight_decay'] = args.weight_decay
+        if args.dropout is not None: p['dropout'] = args.dropout
+        if args.se_ratio is not None: p['se_ratio'] = args.se_ratio
+        print(f"[Inject HPO] Manual mode active. Bypassing DB. Injecting params: {p}")
+    else:
+        db_path = "sqlite:///optuna_study.db"
+        study_name = "se_resnet_vs13_hpo"
+        try:
+            study = optuna.load_study(study_name=study_name, storage=db_path)
+            p = study.best_params
+            print(f"[Inject HPO] Found best params in DB: {p}")
+        except Exception as e:
+            print(f"[Inject HPO] Could not load study from {db_path}: {e}")
+            sys.exit(1)
 
     config_path = "src/config.py"
     with open(config_path, "r") as f:
@@ -35,4 +44,11 @@ def inject_best_params():
     print("[Inject HPO] Successfully injected optimal hyperparameters into src/config.py!")
 
 if __name__ == "__main__":
-    inject_best_params()
+    parser = argparse.ArgumentParser(description="Inject Hyperparameters into config.py")
+    parser.add_argument("--lr", type=float, default=None, help="Manual learning rate to inject")
+    parser.add_argument("--weight_decay", type=float, default=None, help="Manual weight decay to inject")
+    parser.add_argument("--dropout", type=float, default=None, help="Manual dropout rate to inject")
+    parser.add_argument("--se_ratio", type=int, default=None, help="Manual SE ratio to inject")
+    
+    args = parser.parse_args()
+    inject_best_params(args)
