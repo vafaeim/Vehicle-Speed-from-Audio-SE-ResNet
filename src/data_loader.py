@@ -54,7 +54,7 @@ def preprocess_audio(file_path_bytes, stats_mean, stats_std, is_training):
         y=audio, sr=Config.SAMPLE_RATE, 
         n_fft=Config.N_FFT, hop_length=Config.HOP_LENGTH, n_mels=Config.N_MELS
     )
-    mel_db = librosa.power_to_db(mel, ref=np.max)
+    mel_db = librosa.power_to_db(mel, ref=1.0)
     
     # Z-Score Normalization using pre-calculated stats
     mel_norm = (mel_db - stats_mean) / stats_std

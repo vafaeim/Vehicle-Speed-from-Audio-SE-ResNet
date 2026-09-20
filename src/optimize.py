@@ -94,7 +94,7 @@ class VS13MelDataset(Dataset):
                     hop_length=Config.HOP_LENGTH,
                     n_mels=Config.N_MELS,
                 )
-                mel_db = librosa.power_to_db(mel, ref=np.max)
+                mel_db = librosa.power_to_db(mel, ref=1.0)
 
                 if self.stats_mean is not None and self.stats_std is not None:
                     mel_norm = (mel_db - self.stats_mean) / self.stats_std

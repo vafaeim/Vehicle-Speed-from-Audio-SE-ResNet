@@ -114,7 +114,7 @@ def calculate_global_stats(audio_paths, save_path=None):
                 y=audio, sr=Config.SAMPLE_RATE, 
                 n_fft=Config.N_FFT, hop_length=Config.HOP_LENGTH, n_mels=Config.N_MELS
             )
-            mel_db = librosa.power_to_db(mel, ref=np.max)
+            mel_db = librosa.power_to_db(mel, ref=1.0)
             
             mel_sums += np.sum(mel_db, axis=1, keepdims=True)
             mel_sum_sqs += np.sum(mel_db**2, axis=1, keepdims=True)

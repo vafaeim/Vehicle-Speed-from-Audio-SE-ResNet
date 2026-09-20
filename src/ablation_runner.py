@@ -368,7 +368,7 @@ class VS13AblationDataset(Dataset):
                     y=audio, sr=Config.SAMPLE_RATE,
                     n_fft=Config.N_FFT, hop_length=Config.HOP_LENGTH, n_mels=Config.N_MELS,
                 )
-                mel_db = librosa.power_to_db(mel, ref=np.max)
+                mel_db = librosa.power_to_db(mel, ref=1.0)
                 if self.stats_mean is not None and self.stats_std is not None:
                     mel_db = (mel_db - self.stats_mean) / self.stats_std
                 self.cached_tensors.append(torch.tensor(mel_db, dtype=torch.float32).unsqueeze(0))
@@ -404,7 +404,7 @@ class VS13AblationDataset(Dataset):
             y=audio, sr=Config.SAMPLE_RATE,
             n_fft=Config.N_FFT, hop_length=Config.HOP_LENGTH, n_mels=Config.N_MELS,
         )
-        mel_db = librosa.power_to_db(mel, ref=np.max)
+        mel_db = librosa.power_to_db(mel, ref=1.0)
 
         if self.stats_mean is not None and self.stats_std is not None:
             mel_db = (mel_db - self.stats_mean) / self.stats_std
