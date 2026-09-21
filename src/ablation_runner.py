@@ -94,8 +94,10 @@ class AblationResult:
     variant_name: str
     group: str
     parameter_count: int
-    val_rmse: float
-    val_mae: float
+    single_rmse: float
+    single_mae: float
+    ens_rmse: float
+    ens_mae: float
     latency_ms: float
     use_se: bool
     se_ratio: int
@@ -109,8 +111,10 @@ CSV_FIELDNAMES = [
     "variant_name",
     "group",
     "parameter_count",
-    "val_rmse",
-    "val_mae",
+    "single_rmse",
+    "single_mae",
+    "ens_rmse",
+    "ens_mae",
     "latency_ms",
     "use_se",
     "se_ratio",
