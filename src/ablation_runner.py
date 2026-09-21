@@ -201,47 +201,38 @@ GROUP_DEPTH: List[AblationConfig] = [
 
 GROUP_AUG: List[AblationConfig] = [
     AblationConfig(
-        experiment_name="exp_aug_none",
+        experiment_name="aug_none",
         group="aug",
-        variant_type="Clean Spectrograms (p=0.0)",
+        variant_type="clean",
         variant_name="No Augmentation (Clean)",
-        use_se=True,
-        se_ratio=16,
-        stages=3,
         use_noise=False,
         augment_prob=0.0,
     ),
     AblationConfig(
-        experiment_name="exp_aug_noise_only",
+        experiment_name="aug_light",
         group="aug",
-        variant_type="AWGN SNR 10-25 dB",
-        variant_name="Noise Only (AWGN)",
-        use_se=True,
-        se_ratio=16,
-        stages=3,
+        variant_type="noise_light",
+        variant_name="Light Noise (SNR 20-30dB)",
         use_noise=True,
+        noise_snr_db=(20.0, 30.0),
         augment_prob=0.8,
     ),
     AblationConfig(
-        experiment_name="exp_aug_gain_only",
+        experiment_name="aug_std",
         group="aug",
-        variant_type="Random Gain [-6, +6] dB",
-        variant_name="Gain Only",
-        use_se=True,
-        se_ratio=16,
-        stages=3,
-        use_noise=False,
+        variant_type="noise_std",
+        variant_name="Standard Noise (SNR 10-25dB)",
+        use_noise=True,
+        noise_snr_db=(10.0, 25.0),
         augment_prob=0.8,
     ),
     AblationConfig(
-        experiment_name="exp_aug_full",
+        experiment_name="aug_heavy",
         group="aug",
-        variant_type="Gain + AWGN (p=0.8)",
-        variant_name="Full Augmentations (Gain + Noise)",
-        use_se=True,
-        se_ratio=16,
-        stages=3,
+        variant_type="noise_heavy",
+        variant_name="Heavy Noise (SNR 0-10dB)",
         use_noise=True,
+        noise_snr_db=(0.0, 10.0),
         augment_prob=0.8,
     ),
 ]
@@ -271,38 +262,21 @@ def get_ablation_configs(group_name: str) -> List[AblationConfig]:
 
 def apply_augmentations(
     audio: np.ndarray,
-    noise_snr_db: Tuple[float, float] = (10.0, 25.0),
     use_noise: bool = True,
     augment_prob: float = 0.8,
+    noise_snr_db: tuple = (10.0, 25.0),
 ) -> np.ndarray:
-    """
-    Applies stochastic environmental acoustic augmentations:
-    1. Random Gain Scaling in [-6, +6] dB
-    2. Additive White Gaussian Noise (AWGN) with SNR in [10, 25] dB
-    """
-    if not (use_gain or use_noise):
+    if not use_noise:
         return audio
-
     if random.random() > augment_prob:
         return audio
-
-    # 1. Gain Augmentation
-    if use_gain:
-        gain_db = random.uniform(*Config.GAIN_DB)
-        audio = audio * (10.0 ** (gain_db / 20.0))
-
-    # 2. Additive White Gaussian Noise Augmentation
-    if use_noise:
-        snr_db = random.uniform(*Config.NOISE_SNR_DB)
-        power = np.sum(audio ** 2) / max(1, len(audio))
-        if power > 1e-6:
-            noise_power = power / (10.0 ** (snr_db / 10.0))
-            noise = np.random.normal(0.0, np.sqrt(noise_power), len(audio))
-            audio = audio + noise
-
+    snr_db = random.uniform(*noise_snr_db)
+    power = np.sum(audio**2) / len(audio)
+    if power > 1e-6:
+        noise_power = power / (10 ** (snr_db / 10))
+        noise = np.random.normal(0, np.sqrt(noise_power), len(audio))
+        audio += noise
     return audio
-
-
 class VS13AblationDataset(Dataset):
     """
     PyTorch Dataset wrapper for acoustic speed estimation with modular augmentations.
