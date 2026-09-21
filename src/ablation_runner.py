@@ -638,7 +638,7 @@ def train_ablation_variant(
             logger.info(f"    Early stopping triggered at epoch {epoch} (best RMSE: {best_val_rmse:.2f} km/h)")
             break
 
-    # Restore best weights for latency benchmark
+    # Restore best weights for test evaluation and latency benchmark
     if best_weights is not None:
         model.load_state_dict({k: v.to(device) for k, v in best_weights.items()})
 
@@ -647,14 +647,33 @@ def train_ablation_variant(
     first_val_batch = first_val_batch.to(device)
     latency_ms = benchmark_latency(model, first_val_batch, device, repetitions=20, warmup=5)
 
+    # Evaluate on the true held-out test set
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False, drop_last=False,
+        num_workers=4, pin_memory=True, persistent_workers=True
+    )
+    
+    test_sq_errors = []
+    test_abs_errors = []
+    model.eval()
+    with torch.no_grad():
+        for x_t, y_t in test_loader:
+            x_t, y_t = x_t.to(device), y_t.to(device)
+            pred_t = model(x_t).view(-1)
+            test_sq_errors.extend((pred_t - y_t).pow(2).cpu().numpy().tolist())
+            test_abs_errors.extend((pred_t - y_t).abs().cpu().numpy().tolist())
+            
+    test_rmse = float(np.sqrt(np.mean(test_sq_errors)))
+    test_mae = float(np.mean(test_abs_errors))
+
     return AblationResult(
         experiment_name=cfg.experiment_name,
         variant_type=cfg.variant_type,
         variant_name=cfg.variant_name,
         group=cfg.group,
         parameter_count=param_count,
-        val_rmse=round(best_val_rmse, 4),
-        val_mae=round(best_val_mae, 4),
+        val_rmse=round(test_rmse, 4),
+        val_mae=round(test_mae, 4),
         latency_ms=round(latency_ms, 3),
         use_se=cfg.use_se,
         se_ratio=cfg.se_ratio,
