@@ -442,15 +442,9 @@ def benchmark_latency(
 
 
 def format_aug_string(cfg: AblationConfig) -> str:
-    """Returns standardized string label for augmentation configuration."""
-    if not cfg.use_gain and not cfg.use_noise:
-        return "none"
-    elif not cfg.use_gain and cfg.use_noise:
-        return "noise_only"
-    elif cfg.use_gain and not cfg.use_noise:
-        return "gain_only"
-    else:
-        return "full"
+    if not getattr(cfg, 'use_noise', True):
+        return 'Clean'
+    return f'Noise SNR {getattr(cfg, "noise_snr_db", "N/A")}'
 
 
 # ---------------------------------------------------------------------------
