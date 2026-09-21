@@ -482,7 +482,7 @@ def run_dummy_variant(
         dummy_audio = np.random.randn(Config.AUDIO_LENGTH_SAMPLES).astype(np.float32)
         _ = apply_augmentations(
             dummy_audio,
-            use_gain=cfg.use_gain,
+            noise_snr_db=getattr(cfg, "noise_snr_db", (10.0, 25.0)),
             use_noise=cfg.use_noise,
             augment_prob=1.0,
         )
@@ -559,7 +559,7 @@ def train_ablation_variant(
         stats_mean=mean_val,
         stats_std=std_val,
         is_training=True,
-        use_gain=cfg.use_gain,
+        noise_snr_db=getattr(cfg, "noise_snr_db", (10.0, 25.0)),
         use_noise=cfg.use_noise,
         augment_prob=cfg.augment_prob,
         preloaded_audio=preloaded_audio_train,
