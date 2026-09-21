@@ -43,7 +43,7 @@ def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_a
         
         train_ds = VS13AblationDataset(
             audio_paths=X_train, speeds=y_train, stats_mean=mean_val, stats_std=std_val,
-            is_training=True, use_gain=True, use_noise=True, augment_prob=Config.AUGMENT_PROB, preloaded_audio=audio_train
+            is_training=True, use_noise=True, augment_prob=Config.AUGMENT_PROB, preloaded_audio=audio_train
         )
         val_ds = VS13AblationDataset(
             audio_paths=X_val, speeds=y_val, stats_mean=mean_val, stats_std=std_val,
