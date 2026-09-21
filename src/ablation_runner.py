@@ -315,7 +315,7 @@ class VS13AblationDataset(Dataset):
         self.stats_mean = stats_mean
         self.stats_std = stats_std
         self.is_training = is_training
-        self.use_gain = use_gain
+        self.noise_snr_db = noise_snr_db
         self.use_noise = use_noise
         self.augment_prob = augment_prob
 
@@ -371,7 +371,7 @@ class VS13AblationDataset(Dataset):
 
         audio = apply_augmentations(
             audio,
-            use_gain=self.use_gain,
+            noise_snr_db=self.noise_snr_db,
             use_noise=self.use_noise,
             augment_prob=self.augment_prob,
         )
