@@ -7,6 +7,8 @@ from src.train_engine import run_cross_validation
 from src.config import Config
 
 def main():
+    from src.utils import set_seed
+    set_seed(42)
     parser = argparse.ArgumentParser(description="Train SE-ResNet for Vehicle Speed Estimation")
     parser.add_argument('--data_dir', type=str, required=True, help="Path to the VS13 dataset root directory")
     args = parser.parse_args()

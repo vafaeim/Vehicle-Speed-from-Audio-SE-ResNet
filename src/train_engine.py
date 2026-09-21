@@ -21,6 +21,8 @@ from .losses import PhysicsInformedLoss
 from .ablation_runner import VS13AblationDataset
 
 def fold_worker(gpu_id, fold_queue, result_queue, paths_np, all_speeds, master_audio, mean_val, std_val, input_shape):
+    from src.utils import set_seed
+    set_seed(42)
     device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
     # Reduce num_workers since we have multiple active processes
     # Kaggle has 4 cores. 2 workers per process = 4 total workers.

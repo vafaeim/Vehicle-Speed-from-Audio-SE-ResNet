@@ -136,3 +136,14 @@ def calculate_global_stats(audio_paths, save_path=None):
             json.dump(stats, f)
             
     return stats
+import random
+import torch
+
+def set_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
