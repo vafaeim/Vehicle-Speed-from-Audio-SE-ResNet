@@ -148,7 +148,7 @@ GROUP_SE: List[AblationConfig] = [
         experiment_name="exp_se_ratio_16",
         group="se",
         variant_type="SE Ratio r=16 (Standard)",
-        variant_name="SE-ResNet (r=16)",
+        variant_name="Control Baseline (SE r=16, 3 Stage, Std Noise)",
         use_se=True,
         se_ratio=16,
         stages=3,
@@ -175,16 +175,6 @@ GROUP_DEPTH: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=2,
-        use_noise=True,
-    ),
-    AblationConfig(
-        experiment_name="exp_depth_3stages_standard",
-        group="depth",
-        variant_type="3 Stages [96, 192, 384]",
-        variant_name="Standard SE-ResNet (3 stages)",
-        use_se=True,
-        se_ratio=16,
-        stages=3,
         use_noise=True,
     ),
     AblationConfig(
@@ -215,15 +205,6 @@ GROUP_AUG: List[AblationConfig] = [
         variant_name="Light Noise (SNR 20-30dB)",
         use_noise=True,
         noise_snr_db=(20.0, 30.0),
-        augment_prob=0.8,
-    ),
-    AblationConfig(
-        experiment_name="aug_std",
-        group="aug",
-        variant_type="noise_std",
-        variant_name="Standard Noise (SNR 10-25dB)",
-        use_noise=True,
-        noise_snr_db=(10.0, 25.0),
         augment_prob=0.8,
     ),
     AblationConfig(
@@ -524,6 +505,15 @@ def train_ablation_variant(
     """
     Trains and evaluates a single ablation model variant on real dataset partitions.
     """
+    import random
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(42)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
     # 1. Split Training Data into 80% Train / 20% Val for Early Stopping
     # val_paths here represents the pure Test Set
     sub_train_paths, sub_val_paths, sub_train_speeds, sub_val_speeds, sub_train_audio, sub_val_audio = train_test_split(
