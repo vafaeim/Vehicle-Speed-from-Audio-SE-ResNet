@@ -79,7 +79,7 @@ class AblationConfig:
     stages: int = 3
     base_filters: int = 96
     dropout: float = 0.3
-    use_gain: bool = True
+    noise_snr_db: Tuple[float, float] = (10.0, 25.0)
     use_noise: bool = True
     augment_prob: float = 0.8
 
@@ -131,7 +131,6 @@ GROUP_SE: List[AblationConfig] = [
         use_se=False,
         se_ratio=16,
         stages=3,
-        use_gain=True,
         use_noise=True,
     ),
     AblationConfig(
@@ -142,7 +141,6 @@ GROUP_SE: List[AblationConfig] = [
         use_se=True,
         se_ratio=8,
         stages=3,
-        use_gain=True,
         use_noise=True,
     ),
     AblationConfig(
@@ -153,7 +151,6 @@ GROUP_SE: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=3,
-        use_gain=True,
         use_noise=True,
     ),
     AblationConfig(
@@ -164,7 +161,6 @@ GROUP_SE: List[AblationConfig] = [
         use_se=True,
         se_ratio=32,
         stages=3,
-        use_gain=True,
         use_noise=True,
     ),
 ]
@@ -178,7 +174,6 @@ GROUP_DEPTH: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=2,
-        use_gain=True,
         use_noise=True,
     ),
     AblationConfig(
@@ -189,7 +184,6 @@ GROUP_DEPTH: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=3,
-        use_gain=True,
         use_noise=True,
     ),
     AblationConfig(
@@ -200,7 +194,6 @@ GROUP_DEPTH: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=4,
-        use_gain=True,
         use_noise=True,
     ),
 ]
@@ -214,7 +207,6 @@ GROUP_AUG: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=3,
-        use_gain=False,
         use_noise=False,
         augment_prob=0.0,
     ),
@@ -226,7 +218,6 @@ GROUP_AUG: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=3,
-        use_gain=False,
         use_noise=True,
         augment_prob=0.8,
     ),
@@ -238,7 +229,6 @@ GROUP_AUG: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=3,
-        use_gain=True,
         use_noise=False,
         augment_prob=0.8,
     ),
@@ -250,7 +240,6 @@ GROUP_AUG: List[AblationConfig] = [
         use_se=True,
         se_ratio=16,
         stages=3,
-        use_gain=True,
         use_noise=True,
         augment_prob=0.8,
     ),
@@ -281,7 +270,7 @@ def get_ablation_configs(group_name: str) -> List[AblationConfig]:
 
 def apply_augmentations(
     audio: np.ndarray,
-    use_gain: bool = True,
+    noise_snr_db: Tuple[float, float] = (10.0, 25.0),
     use_noise: bool = True,
     augment_prob: float = 0.8,
 ) -> np.ndarray:
@@ -326,7 +315,7 @@ class VS13AblationDataset(Dataset):
         stats_mean: Optional[np.ndarray] = None,
         stats_std: Optional[np.ndarray] = None,
         is_training: bool = False,
-        use_gain: bool = True,
+        noise_snr_db: Tuple[float, float] = (10.0, 25.0),
         use_noise: bool = True,
         augment_prob: float = 0.8,
         preloaded_audio: Optional[List[np.ndarray]] = None,
@@ -593,7 +582,6 @@ def train_ablation_variant(
         stats_mean=mean_val,
         stats_std=std_val,
         is_training=False,
-        use_gain=False,
         use_noise=False,
         preloaded_audio=preloaded_audio_val,
     )
