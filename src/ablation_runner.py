@@ -45,6 +45,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -549,22 +550,37 @@ def train_ablation_variant(
     """
     Trains and evaluates a single ablation model variant on real dataset partitions.
     """
-    # 1. Dataset & DataLoaders
+    # 1. Split Training Data into 80% Train / 20% Val for Early Stopping
+    # val_paths here represents the pure Test Set
+    sub_train_paths, sub_val_paths, sub_train_speeds, sub_val_speeds, sub_train_audio, sub_val_audio = train_test_split(
+        train_paths, train_speeds, preloaded_audio_train, test_size=0.2, random_state=42
+    )
+
+    # 2. Dataset & DataLoaders
     mean_val = np.array(stats["mean"], dtype=np.float32)
     std_val = np.array(stats["std"], dtype=np.float32)
 
     train_ds = VS13AblationDataset(
-        audio_paths=train_paths,
-        speeds=train_speeds,
+        audio_paths=sub_train_paths,
+        speeds=sub_train_speeds,
         stats_mean=mean_val,
         stats_std=std_val,
         is_training=True,
         noise_snr_db=getattr(cfg, "noise_snr_db", (10.0, 25.0)),
         use_noise=cfg.use_noise,
         augment_prob=cfg.augment_prob,
-        preloaded_audio=preloaded_audio_train,
+        preloaded_audio=sub_train_audio,
     )
     val_ds = VS13AblationDataset(
+        audio_paths=sub_val_paths,
+        speeds=sub_val_speeds,
+        stats_mean=mean_val,
+        stats_std=std_val,
+        is_training=False,
+        use_noise=False,
+        preloaded_audio=sub_val_audio,
+    )
+    test_ds = VS13AblationDataset(
         audio_paths=val_paths,
         speeds=val_speeds,
         stats_mean=mean_val,
@@ -580,6 +596,10 @@ def train_ablation_variant(
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False, drop_last=False,
+        num_workers=4, pin_memory=True, persistent_workers=True
+    )
+    test_loader = DataLoader(
+        test_ds, batch_size=batch_size, shuffle=False, drop_last=False,
         num_workers=4, pin_memory=True, persistent_workers=True
     )
 
