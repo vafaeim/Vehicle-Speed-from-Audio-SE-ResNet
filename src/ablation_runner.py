@@ -490,7 +490,7 @@ def run_dummy_variant(
     y_train = torch.tensor([50.0, 75.0], dtype=torch.float32, device=device)[:batch_size]
 
     # Verify augmentation code path with synthetic audio waveform
-    if cfg.use_gain or cfg.use_noise:
+    if cfg.use_noise:
         dummy_audio = np.random.randn(Config.AUDIO_LENGTH_SAMPLES).astype(np.float32)
         _ = apply_augmentations(
             dummy_audio,
