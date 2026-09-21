@@ -863,7 +863,7 @@ def main():
             "Please provide a valid path via --data_dir, or run with --dummy for fast verification."
         )
 
-    from src.utils import calculate_global_stats, get_official_train_test_split
+    from src.utils import calculate_global_stats, get_official_train_test_split, SortedKFold
 
     train_paths, train_speeds, _, val_paths, val_speeds, _ = get_official_train_test_split(args.data_dir)
     
