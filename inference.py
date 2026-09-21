@@ -899,9 +899,26 @@ def run_ensemble_inference(
                     out = model(X_b)
                     fold_preds.extend(out.squeeze(-1).cpu().numpy())
 
+        fold_preds = np.array(fold_preds)
         all_fold_preds.append(fold_preds)
+        
+        # Calculate individual fold RMSE and MAE
+        from sklearn.metrics import mean_squared_error, mean_absolute_error
+        fold_rmse = np.sqrt(mean_squared_error(speeds, fold_preds))
+        fold_mae = mean_absolute_error(speeds, fold_preds)
+        print(f"  -> Fold {ckpt_idx + 1} RMSE: {fold_rmse:.2f} km/h, MAE: {fold_mae:.2f} km/h")
 
+    all_fold_preds = np.array(all_fold_preds)
     ensemble_preds = np.mean(all_fold_preds, axis=0)
+    
+    # Calculate expected single-model performance
+    fold_rmses = [np.sqrt(np.mean((speeds - fold)**2)) for fold in all_fold_preds]
+    fold_maes = [np.mean(np.abs(speeds - fold)) for fold in all_fold_preds]
+    avg_single_rmse = np.mean(fold_rmses)
+    std_single_rmse = np.std(fold_rmses)
+    avg_single_mae = np.mean(fold_maes)
+    std_single_mae = np.std(fold_maes)
+
 
     # Statistical Error Analysis
     print("[INFO] Performing class-wise ANOVA and velocity regime distribution analysis...")
@@ -929,8 +946,12 @@ def run_ensemble_inference(
     print("\n" + "=" * 50)
     print("STATISTICAL ERROR ANALYSIS COMPLETE")
     print(f"Total Samples:       {len(speeds)}")
-    print(f"Overall RMSE:        {anova_results['overall_rmse']:.2f} km/h")
-    print(f"Overall MAE:         {anova_results['overall_mae']:.2f} km/h")
+    print("-" * 50)
+    print(f"Expected Single Model RMSE: {avg_single_rmse:.2f} +/- {std_single_rmse:.2f} km/h")
+    print(f"Expected Single Model MAE:  {avg_single_mae:.2f} +/- {std_single_mae:.2f} km/h")
+    print("-" * 50)
+    print(f"10-Fold Ensemble RMSE:      {anova_results['overall_rmse']:.2f} km/h")
+    print(f"10-Fold Ensemble MAE:       {anova_results['overall_mae']:.2f} km/h")
     print(f"One-Way ANOVA:       F = {anova_results['f_statistic']:.3f} (p = {anova_results['p_value']:.4f})")
     print(f"Levene Homosced.:    W = {anova_results['levene_statistic']:.3f} (p = {anova_results['levene_p_value']:.4f})")
     print(f"Outputs written to:  {output_dir}")
