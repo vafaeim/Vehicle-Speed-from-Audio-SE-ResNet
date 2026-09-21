@@ -263,8 +263,8 @@ def run_nested_inner_cv(
 
         # Calculate normalization statistics from training fold only (zero-leakage)
         stats = calculate_global_stats(train_paths)
-        train_ds = VS13MelDataset(train_paths, train_speeds, stats["mean"], stats["std"], is_training=True)
-        val_ds = VS13MelDataset(val_paths, val_speeds, stats["mean"], stats["std"], is_training=False)
+        train_ds = VS13AblationDataset(train_paths, train_speeds, stats_mean=np.array(stats["mean"], dtype=np.float32), stats_std=np.array(stats["std"], dtype=np.float32), is_training=True, noise_snr_db=Config.NOISE_SNR_DB, use_noise=True, augment_prob=Config.AUGMENT_PROB)
+        val_ds = VS13AblationDataset(val_paths, val_speeds, stats_mean=np.array(stats["mean"], dtype=np.float32), stats_std=np.array(stats["std"], dtype=np.float32), is_training=False, use_noise=False)
 
         train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
@@ -447,8 +447,8 @@ def evaluate_outer_folds(
         test_speeds = all_speeds[test_idx]
 
         stats = calculate_global_stats(train_paths)
-        train_ds = VS13MelDataset(train_paths, train_speeds, stats["mean"], stats["std"], is_training=True)
-        test_ds = VS13MelDataset(test_paths, test_speeds, stats["mean"], stats["std"], is_training=False)
+        train_ds = VS13AblationDataset(train_paths, train_speeds, stats_mean=np.array(stats["mean"], dtype=np.float32), stats_std=np.array(stats["std"], dtype=np.float32), is_training=True, noise_snr_db=Config.NOISE_SNR_DB, use_noise=True, augment_prob=Config.AUGMENT_PROB)
+        test_ds = VS13AblationDataset(test_paths, test_speeds, stats_mean=np.array(stats["mean"], dtype=np.float32), stats_std=np.array(stats["std"], dtype=np.float32), is_training=False, use_noise=False)
 
         train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
         test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
