@@ -22,7 +22,7 @@ class Config:
     # --- Augmentation ---
     AUGMENT_PROB = 0.8
     NOISE_SNR_DB = (10, 25)
-    GAIN_DB = (-6, 6)
+    GAIN_DB = (0, 0)
     
     # --- System ---
     SEED = 42
