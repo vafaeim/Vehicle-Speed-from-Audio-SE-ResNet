@@ -76,70 +76,180 @@ Approaches to this problem have transitioned from physics-driven modeling to dat
 
 
 \section{Methodology}
+
 \subsection{Amplitude-Preserving Acoustic Preprocessing}
-% We will explain the ref=1.0 fix and removal of peak normalization here
+The acoustic signature of a passing vehicle is inherently non-stationary, characterized by continuous frequency shifts (Doppler effect) and amplitude variations governed by the inverse-square law of acoustics. Let the raw audio waveform be denoted as $x(t)$ sampled at frequency $f_s = 16$ kHz. To capture the spectral-temporal dynamics, we first compute the Short-Time Fourier Transform (STFT):
+\begin{equation}
+    X(m, k) = \sum_{n=0}^{N-1} x(n + mH) w(n) e^{-j 2\pi k n / N}
+\end{equation}
+where $N$ is the window size, $H$ is the hop length, and $w(n)$ is a Hann window function. We apply a Mel-filterbank with $M$ filters to the power spectrogram $|X(m,k)|^2$ to emulate human auditory perception, mapping linear frequency $f$ to the Mel scale:
+\begin{equation}
+    m = 2595 \log_{10}\left(1 + \frac{f}{700}\right)
+\end{equation}
+The resulting Mel-spectrogram $S_{mel}(m, b)$ has dimensions $T \times M$. A critical departure from standard audio processing pipelines is the omission of peak normalization. By retaining the absolute magnitude reference ($S(m,b) = 10 \log_{10}(S_{mel}(m,b) + \epsilon)$ without subtracting the maximum), the model preserves the spatial loudness profile, allowing the network to explicitly correlate sound intensity with distance and velocity.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=0.6cm,
+    block/.style={rectangle, draw, thick, fill=cyan!10, text width=6cm, align=center, rounded corners, minimum height=0.8cm, font=\small},
+    line/.style={draw, -{Stealth[scale=1.2]}, thick},
+]
+\node [block, fill=green!15] (input) {Raw Audio Waveform $x(t)$};
+\node [block, below=of input] (stft) {STFT \& Power Spectrogram};
+\node [block, below=of stft] (mel) {Mel Filterbank Mapping};
+\node [block, below=of mel] (log) {Log-Scaling ($+ \epsilon$)};
+\node [block, fill=red!15, below=of log] (output) {Amplitude Preserved $S(m,b)$};
+
+\path [line] (input) -- (stft);
+\path [line] (stft) -- (mel);
+\path [line] (mel) -- (log);
+\path [line] (log) -- (output);
+\end{tikzpicture}
+\caption{Acoustic Preprocessing Pipeline emphasizing amplitude preservation.}
+\label{fig:preprocessing}
+\end{figure}
 
 \subsection{SE-ResNet Architecture}
-% TikZ Architecture diagram will go here
+The core processing engine is an attention-augmented Residual Network. The network ingests the 2D Mel-spectrogram and processes it through a series of residual blocks, each integrated with a Squeeze-and-Excitation (SE) module. Let $\mathbf{U} \in \mathbb{R}^{C \times H \times W}$ be the feature map output of a standard residual mapping. The SE block adaptively recalibrates channel-wise feature responses by explicitly modeling interdependencies between channels.
+
+The \textit{Squeeze} operation aggregates spatial features via Global Average Pooling (GAP) to produce a channel descriptor $\mathbf{z} \in \mathbb{R}^{C}$:
+\begin{equation}
+    z_c = \frac{1}{H \times W} \sum_{i=1}^{H} \sum_{j=1}^{W} \mathbf{U}_{c}(i, j)
+\end{equation}
+The \textit{Excitation} operation employs a bottleneck architecture with two fully connected (FC) layers, regulated by a reduction ratio $r$, followed by a sigmoid activation to capture channel-wise dependencies:
+\begin{equation}
+    \mathbf{s} = \sigma\left( \mathbf{W}_2 \delta\left( \mathbf{W}_1 \mathbf{z} \right) \right)
+\end{equation}
+where $\delta$ is the ReLU activation, $\mathbf{W}_1 \in \mathbb{R}^{\frac{C}{r} \times C}$ and $\mathbf{W}_2 \in \mathbb{R}^{C \times \frac{C}{r}}$ are the trainable weights, and $\sigma$ is the sigmoid function. The final output is obtained by channel-wise multiplication: $\widetilde{\mathbf{U}}_c = s_c \cdot \mathbf{U}_c$. 
+This dynamic recalibration ensures the network amplifies features critical to Doppler shift while suppressing invariant background noise.
 
 \begin{figure*}[htbp]
 \centering
-\resizebox{\textwidth}{!}{
 \begin{tikzpicture}[
-    node distance=1.5cm and 2cm,
-    box/.style={rectangle, draw, thick, align=center, fill=blue!10, rounded corners=2pt, font=\small},
-    sebox/.style={rectangle, draw, thick, align=center, fill=orange!10, rounded corners=2pt, font=\small},
-    arrow/.style={-{Stealth[scale=1.2]}, thick}
+    >=stealth,
+    node distance=0.6cm,
+    % Modern minimalist flat style
+    box/.style={rectangle, draw=gray!80, fill=blue!5, thick, minimum width=1.5cm, minimum height=1.0cm, align=center, rounded corners=3pt, font=\sffamily\scriptsize},
+    sebox/.style={rectangle, draw=gray!80, fill=orange!5, thick, minimum width=1.5cm, minimum height=0.8cm, align=center, rounded corners=3pt, font=\sffamily\scriptsize},
+    poolbox/.style={rectangle, draw=gray!80, fill=red!5, thick, minimum width=1.5cm, minimum height=1.0cm, align=center, rounded corners=3pt, font=\sffamily\scriptsize},
+    arr/.style={->, thick, draw=gray!80},
+    dashedarr/.style={->, thick, dashed, draw=gray!80}
 ]
 
-% Input
-\node[box, fill=green!10] (input) {Raw Audio Waveform\\(10s, 16kHz)};
+% Macro Architecture
+\node[box, fill=green!5] (in) {Audio Signal};
+\node[box, right=of in] (mel) {Mel-Spec\\$128 \times 313$};
+\node[box, right=of mel] (stem) {Stem\\Conv $7\times 7$};
+\node[box, right=of stem] (stage1) {Stage 1\\SE-Res\\96 Ch};
+\node[box, right=of stage1] (stage2) {Stage 2\\SE-Res\\192 Ch};
+\node[box, right=of stage2] (stage3) {Stage 3\\SE-Res\\384 Ch};
+\node[poolbox, right=of stage3] (gap) {Global\\Avg Pool};
+\node[poolbox, right=of gap] (fc) {Linear\\Output};
 
-% Preprocessing
-\node[box, right=of input] (mel) {Mel-Spectrogram\\$128 \times 313$\\(Absolute Amplitude)};
+\draw[arr] (in) -- (mel);
+\draw[arr] (mel) -- (stem);
+\draw[arr] (stem) -- (stage1);
+\draw[arr] (stage1) -- (stage2);
+\draw[arr] (stage2) -- (stage3);
+\draw[arr] (stage3) -- (gap);
+\draw[arr] (gap) -- (fc);
 
-% Stage 1
-\node[box, right=of mel] (conv1) {Conv2D ($7\times7$)\\+ BatchNorm + ReLU};
+% Micro Architecture (Zoomed in on SE-ResBlock)
+\node[below=2cm of stage2, font=\sffamily\small\bfseries] (zoomtitle) {Internal Structure of a Squeeze-and-Excitation Residual Block};
 
-% Res Blocks
-\node[box, right=of conv1] (stage1) {Residual Stage 1\\(2 Blocks, 96 filters)};
-\node[sebox, below=0.5cm of stage1] (se1) {SE Attention\\$(r=8)$};
+\node[box, below=1cm of zoomtitle, xshift=-4.5cm] (blockin) {Input $\mathbf{X}$};
+\node[box, right=1cm of blockin] (conv1) {Conv $3\times 3$};
+\node[box, right=1cm of conv1] (conv2) {Conv $3\times 3$};
+\node[circle, draw=gray!80, thick, fill=gray!10, right=1.5cm of conv2, font=\scriptsize] (plus) {$+$};
+\node[box, right=1cm of plus] (blockout) {Output};
 
-\node[box, right=of stage1] (stage2) {Residual Stage 2\\(2 Blocks, 192 filters)};
-\node[sebox, below=0.5cm of stage2] (se2) {SE Attention\\$(r=8)$};
+\draw[arr] (blockin) -- (conv1);
+\draw[arr] (conv1) -- (conv2);
+\draw[arr] (plus) -- (blockout);
 
-\node[box, right=of stage2] (stage3) {Residual Stage 3\\(2 Blocks, 384 filters)};
-\node[sebox, below=0.5cm of stage3] (se3) {SE Attention\\$(r=8)$};
+% Residual skip connection
+\draw[arr] (blockin.south) -- ++(0,-0.6) -| node[pos=0.25, below, font=\sffamily\scriptsize] {Identity Skip Connection} (plus.south);
 
-% Head
-\node[box, right=of stage3] (pool) {Global Average Pooling};
-\node[box, fill=red!10, below=of pool] (output) {Linear Layer\\(Speed Prediction)};
+% SE Branch
+\node[sebox, above=0.8cm of conv2] (sefc2) {FC, Sigmoid};
+\node[sebox, left=0.6cm of sefc2] (sefc1) {FC, ReLU};
+\node[sebox, left=0.6cm of sefc1] (segap) {Global Pool};
 
-% Connections
-\draw[arrow] (input) -- (mel);
-\draw[arrow] (mel) -- (conv1);
-\draw[arrow] (conv1) -- (stage1);
-\draw[arrow] (stage1) -- (stage2);
-\draw[arrow] (stage2) -- (stage3);
-\draw[arrow] (stage3) -- (pool);
-\draw[arrow] (pool) -- (output);
+\draw[arr] (conv2.north) -- ++(0, 0.4) -| (segap.south);
+\draw[arr] (segap) -- (sefc1);
+\draw[arr] (sefc1) -- (sefc2);
 
-% SE Connections
-\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage1) -- (se1);
-\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage2) -- (se2);
-\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage3) -- (se3);
+\node[circle, draw=gray!80, thick, fill=orange!10, right=0.8cm of sefc2, font=\scriptsize] (times) {$\otimes$};
+\draw[arr] (sefc2) -- (times);
+
+% The SE attention modulation applies to the residual output BEFORE the addition
+\draw[arr] (conv2.east) -| (times.south);
+\draw[arr] (times.east) -| node[pos=0.7, right, font=\sffamily\scriptsize] {Attention} (plus.north);
+
+% Bounding box for Micro
+\node[draw=gray!50, dashed, thick, rounded corners, fit=(zoomtitle) (blockin) (blockout) (sefc2) (plus) (times)] (microbox) {};
+\draw[gray!50, dashed, thick] (stage2.south) -- (microbox.north);
 
 \end{tikzpicture}
-}
-\caption{The proposed Amplitude-Preserving SE-ResNet Architecture. Raw audio is converted to Mel-spectrograms without destructive peak-normalization, preserving the inverse-square law of acoustic loudness. Features are processed through 3 residual stages, each heavily modulated by a Squeeze-and-Excitation (SE) attention mechanism to isolate vehicle friction frequencies.}
+\caption{Modern Macro-Micro Architecture of the Amplitude-Preserving SE-ResNet. The top row illustrates the high-level data flow, while the bottom box provides an exploded view of a single Squeeze-and-Excitation (SE) Residual Block, highlighting the parallel temporal attention mechanism.}
 \label{fig:architecture}
 \end{figure*}
 
 \subsection{Rigorous Evaluation Framework}
-% We will explain Nested CV and SortedKFold here.
+Due to the relatively small size of the VS13 dataset (400 samples), standard k-fold cross-validation is susceptible to optimism bias if hyperparameters are selected and evaluated on the same splits. To mitigate this, we implemented a \textit{Nested Cross-Validation} framework. Let $\mathcal{D}$ be the complete dataset. In the outer loop, $\mathcal{D}$ is partitioned into $K_{out} = 10$ folds. For each outer fold $k$, the test set $\mathcal{D}_{test}^{(k)}$ is isolated, and the remaining data $\mathcal{D}_{train}^{(k)}$ is passed to an inner optimization loop.
+
+The performance metrics used are the Root Mean Square Error (RMSE) and Mean Absolute Error (MAE):
+\begin{equation}
+    \text{RMSE} = \sqrt{\frac{1}{N}\sum_{i=1}^{N}(y_i - \hat{y}_i)^2}
+\end{equation}
+\begin{equation}
+    \text{MAE} = \frac{1}{N}\sum_{i=1}^{N}|y_i - \hat{y}_i|
+\end{equation}
+where $y_i$ and $\hat{y}_i$ are the true and predicted speeds for the $i$-th sample, and $N$ is the total number of samples evaluated.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=0.2cm,
+    outer/.style={rectangle, draw, thick, rounded corners, minimum width=8.5cm, minimum height=0.8cm, fill=gray!10},
+    inner/.style={rectangle, draw, thick, fill=blue!15, minimum width=1.5cm, minimum height=0.6cm, font=\scriptsize, anchor=west},
+    test/.style={rectangle, draw, thick, fill=orange!30, minimum width=1.8cm, minimum height=0.6cm, font=\scriptsize, anchor=west}
+]
+
+% Fold 1
+\node[outer] (fold1) {};
+\node[inner] at ([xshift=0.1cm]fold1.west) {Train (Inner)};
+\node[inner] at ([xshift=1.7cm]fold1.west) {Train (Inner)};
+\node[inner] at ([xshift=3.3cm]fold1.west) {Validation};
+\node[test]  at ([xshift=4.9cm]fold1.west) {Test (Outer)};
+\node[anchor=west, font=\scriptsize] at ([xshift=6.8cm]fold1.west) {Outer Fold 1};
+
+% Fold 2
+\node[outer, below=of fold1] (fold2) {};
+\node[inner] at ([xshift=0.1cm]fold2.west) {Train (Inner)};
+\node[inner] at ([xshift=1.7cm]fold2.west) {Validation};
+\node[inner] at ([xshift=3.3cm]fold2.west) {Train (Inner)};
+\node[test]  at ([xshift=4.9cm]fold2.west) {Test (Outer)};
+\node[anchor=west, font=\scriptsize] at ([xshift=6.8cm]fold2.west) {Outer Fold 2};
+
+\node[below=0.2cm of fold2] (dots) {$\vdots$};
+
+% Fold 10
+\node[outer, below=0.2cm of dots] (foldk) {};
+\node[test]  at ([xshift=0.1cm]foldk.west) {Test (Outer)};
+\node[inner] at ([xshift=2.0cm]foldk.west) {Train (Inner)};
+\node[inner] at ([xshift=3.6cm]foldk.west) {Validation};
+\node[inner] at ([xshift=5.2cm]foldk.west) {Train (Inner)};
+\node[anchor=west, font=\scriptsize] at ([xshift=6.8cm]foldk.west) {Outer Fold 10};
+
+\end{tikzpicture}
+\caption{Nested Cross-Validation protocol ensuring zero data leakage.}
+\label{fig:nestedcv}
+\end{figure}
 
 \section{Experimental Setup}
-% Detail the Optuna, HPO, and ablation groups
+The experimental pipeline was built using PyTorch and executed on a dual NVIDIA T4 GPU setup. To search the hyperparameter space efficiently, we employed the Tree-structured Parzen Estimator (TPE) algorithm via the Optuna \cite{ref11} framework. The optimization was decentralized using an SQLite backend to manage concurrency across both GPUs, preventing locking overhead. The search space included the learning rate, weight decay, SE reduction ratio ($r \in \{8, 16, 32\}$), and noise augmentation intensities. For ablation studies, deterministic seeds were enforced to ensure comparable initialization across different architectural variants.
 
 \section{Results and Discussion}
 \subsection{State-of-the-Art Evaluation}
