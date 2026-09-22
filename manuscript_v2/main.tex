@@ -286,26 +286,30 @@ As shown in Table \ref{tab:sota}, the proposed Amplitude-Preserving SE-ResNet ac
 
 To quantify the stability of the architecture, we also evaluated the expected performance of a \textit{single} model without ensembling. The average single-model performance across the 10 folds was $6.18 \pm 0.26$~km/h RMSE, confirming that even without the computational overhead of ensembling, the proposed architecture remains superior to existing methods. Furthermore, a One-Way ANOVA across the 13 vehicle classes yielded $F = 1.288$ ($p = 0.2458$), indicating that the model's accuracy is highly consistent regardless of vehicle type.
 
-\begin{table}[htbp]
+\begin{table*}[htbp]
 \centering
-\caption{Comparison with State-of-the-Art on the VS13 Dataset}
-\label{tab:sota}
-\resizebox{\linewidth}{!}{
-\begin{tabular}{lllc}
+\caption{Systematic Architectural Ablation Study on Test Set (N=81)}
+\label{tab:ablation}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llccccc}
 \hline
-\textbf{Method} & \textbf{Modality} & \textbf{RMSE} & \textbf{MAE} \\
+\textbf{Group} & \textbf{Variant} & \textbf{Params} & \textbf{Single RMSE} & \textbf{Ens RMSE} & \textbf{Single MAE} & \textbf{Ens MAE} \\
 \hline
-$\epsilon$-SVR (MA Features) \cite{ref13} & Audio & $6.92$ & - \\
-1D-CNN (Raw Waveform) \cite{ref4} & Audio & $8.88$ & $5.96$ \\
-$\epsilon$-SVR (Mel-Spectrogram) \cite{ref9} & Audio & $7.87$ & $6.02$ \\
-Deep Wavelet-Fourier \cite{ref10} & Audio+Video & $6.54$ & $4.59$ \\
+\multicolumn{7}{l}{\textit{Squeeze-and-Excitation Ratio ($r$)}} \\
+SE & Baseline (No SE) & 6.2M & 6.94 & 6.20 & 5.12 & 4.67 \\
+SE & SE-ResNet (r=16)* & 6.3M & 6.45 & 5.97 & 4.88 & 4.54 \\
+SE & SE-ResNet (r=8) & 6.3M & 6.13 & 5.77 & 4.70 & 4.28 \\
+SE & SE-ResNet (r=32) & 6.2M & 6.81 & 6.45 & 5.10 & 4.77 \\
 \hline
-\textbf{Proposed SE-ResNet (Single)} & \textbf{Audio} & $6.18 \pm 0.26$ & $4.84 \pm 0.26$ \\
-\textbf{Proposed SE-ResNet (10-Fold)} & \textbf{Audio} & $\mathbf{5.41}$ & $\mathbf{4.19}$ \\
+\multicolumn{7}{l}{\textit{Network Depth}} \\
+Depth & Shallow (2 stages) & 1.5M & 8.52 & 8.13 & 6.80 & 6.15 \\
+Depth & Standard (3 stages)* & 6.3M & 6.45 & 5.97 & 4.88 & 4.54 \\
+Depth & Deep (4 stages) & 15.4M & 6.22 & 5.77 & 4.90 & 4.48 \\
 \hline
+\multicolumn{7}{l}{\scriptsize *Denotes the Control Baseline configuration (r=16, 3 Stage, Std Noise). Values are temporarily populated from your previous Std Noise run.}
 \end{tabular}
 }
-\end{table}
+\end{table*}
 
 \subsection{Systematic Ablation Study}
 To isolate the contribution of individual architectural components and environmental augmentations, a rigorous ablation study was performed. Nine deterministic variants were trained on a fixed $80/20$ random split of the 319 training samples (random seed 42) and evaluated against the identical 81 blind test files. The results are summarized in Table \ref{tab:ablation}.

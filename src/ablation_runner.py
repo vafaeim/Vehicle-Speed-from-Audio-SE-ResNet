@@ -659,7 +659,7 @@ def save_results_to_csv(results: List[AblationResult], output_csv_path: str) -> 
 
 def print_results_table(results: List[AblationResult]) -> None:
     """Formats and prints summary table of ablation study results."""
-    header = f"{'Group':<8} | {'Variant':<32} | {'Params':<11} | {'RMSE (km/h)':<13} | {'MAE (km/h)':<12} | {'Latency (ms)':<12}"
+    header = f"{'Group':<8} | {'Variant':<32} | {'Params':<11} | {'Single RMSE':<11} | {'Ens RMSE':<8} | {'Single MAE':<10} | {'Ens MAE':<7} | {'Latency':<12}"
     separator = "-" * len(header)
     print("\n" + separator)
     print("                      ABLATION STUDY RESULTS SUMMARY")
@@ -668,7 +668,7 @@ def print_results_table(results: List[AblationResult]) -> None:
     print(separator)
     for r in results:
         print(
-            f"{r.group:<8} | {r.variant_name:<32} | {r.parameter_count:>11,} | {r.ens_rmse:>13.2f} | {r.ens_mae:>12.2f} | {r.latency_ms:>12.2f}"
+            f"{r.group:<8} | {r.variant_name:<32} | {r.parameter_count:>11,} | {r.single_rmse:>11.2f} | {r.ens_rmse:>8.2f} | {r.single_mae:>10.2f} | {r.ens_mae:>7.2f} | {r.latency_ms:>12.2f}"
         )
     print(separator + "\n")
 
