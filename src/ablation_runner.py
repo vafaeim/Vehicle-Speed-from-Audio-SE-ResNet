@@ -696,7 +696,7 @@ def print_results_table(results: List[AblationResult]) -> None:
     print(separator)
     for r in results:
         print(
-            f"{r.group:<8} | {r.variant_name:<32} | {r.parameter_count:>11,} | {r.val_rmse:>13.2f} | {r.val_mae:>12.2f} | {r.latency_ms:>12.2f}"
+            f"{r.group:<8} | {r.variant_name:<32} | {r.parameter_count:>11,} | {r.ens_rmse:>13.2f} | {r.ens_mae:>12.2f} | {r.latency_ms:>12.2f}"
         )
     print(separator + "\n")
 
@@ -792,7 +792,7 @@ def ablation_worker_top(gpu_id, q_task, q_res, train_paths, train_speeds, val_pa
                 device=dev, epochs=epochs, batch_size=batch_size,
                 patience=patience, preloaded_audio_train=preloaded_train, preloaded_audio_val=preloaded_val
             )
-            logger.info(f"[{dev}] [{i}/{total}] Completed {c.variant_name} - Val RMSE={res.val_rmse:.2f} km/h")
+            logger.info(f"[{dev}] [{i}/{total}] Completed {c.variant_name} - Val Ens RMSE={res.ens_rmse:.2f} km/h")
             q_res.put(res)
         except Exception as e:
             logger.error(f"[{dev}] Error in {c.variant_name}: {e}")
@@ -828,7 +828,7 @@ def main():
             results.append(res)
             logger.info(
                 f"  -> Finished {cfg.variant_name}: Params={res.parameter_count:,}, "
-                f"RMSE={res.val_rmse:.2f} km/h, MAE={res.val_mae:.2f} km/h, Latency={res.latency_ms:.2f} ms"
+                f"Ens RMSE={res.ens_rmse:.2f} km/h, MAE={res.ens_mae:.2f} km/h, Latency={res.latency_ms:.2f} ms"
             )
 
         save_results_to_csv(results, args.output_csv)
@@ -929,7 +929,7 @@ def main():
 
     # Sort results to match original config order roughly
     # (Since we didn't store the exact sort key, we'll sort by group and RMSE)
-    results.sort(key=lambda r: (r.group, r.val_rmse))
+    results.sort(key=lambda r: (r.group, r.ens_rmse))
 
     save_results_to_csv(results, args.output_csv)
     print_results_table(results)
