@@ -8,7 +8,7 @@
 \usepackage{tikz}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
-\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, calc}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, fit, calc, shadows}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -126,73 +126,99 @@ This dynamic recalibration ensures the network amplifies features critical to Do
 
 \begin{figure*}[htbp]
 \centering
+\resizebox{\textwidth}{!}{
 \begin{tikzpicture}[
     >=stealth,
-    node distance=0.6cm,
-    % Modern minimalist flat style
-    box/.style={rectangle, draw=gray!80, fill=blue!5, thick, minimum width=1.5cm, minimum height=1.0cm, align=center, rounded corners=3pt, font=\sffamily\scriptsize},
-    sebox/.style={rectangle, draw=gray!80, fill=orange!5, thick, minimum width=1.5cm, minimum height=0.8cm, align=center, rounded corners=3pt, font=\sffamily\scriptsize},
-    poolbox/.style={rectangle, draw=gray!80, fill=red!5, thick, minimum width=1.5cm, minimum height=1.0cm, align=center, rounded corners=3pt, font=\sffamily\scriptsize},
-    arr/.style={->, thick, draw=gray!80},
-    dashedarr/.style={->, thick, dashed, draw=gray!80}
+    font=\sffamily\small,
+    % Define styles for the blocks
+    tensor/.style={rectangle, draw=blue!80!black, fill=blue!5, thick, rounded corners=3pt, minimum width=2.4cm, minimum height=1.6cm, align=center, drop shadow={opacity=0.15, shadow xshift=2pt, shadow yshift=-2pt}},
+    op/.style={circle, draw=green!60!black, fill=green!5, thick, minimum size=0.9cm, align=center, drop shadow={opacity=0.15}, inner sep=0pt, font=\Large\bfseries},
+    seop/.style={rectangle, draw=orange!80!black, fill=orange!5, thick, rounded corners=3pt, minimum width=2.2cm, minimum height=1.2cm, align=center, drop shadow={opacity=0.15}},
+    gap/.style={rectangle, draw=red!80!black, fill=red!5, thick, rounded corners=3pt, minimum width=2.4cm, minimum height=1.6cm, align=center, drop shadow={opacity=0.15}},
+    arr/.style={->, thick, draw=black!80},
+    dashedarr/.style={->, thick, dashed, draw=black!80},
+    labelnode/.style={font=\sffamily\scriptsize\color{black!80}, align=center}
 ]
 
-% Macro Architecture
-\node[box, fill=green!5] (in) {Audio Signal};
-\node[box, right=of in] (mel) {Mel-Spec\\$128 \times 313$};
-\node[box, right=of mel] (stem) {Stem\\Conv $7\times 7$};
-\node[box, right=of stem] (stage1) {Stage 1\\SE-Res\\96 Ch};
-\node[box, right=of stage1] (stage2) {Stage 2\\SE-Res\\192 Ch};
-\node[box, right=of stage2] (stage3) {Stage 3\\SE-Res\\384 Ch};
-\node[poolbox, right=of stage3] (gap) {Global\\Avg Pool};
-\node[poolbox, right=of gap] (fc) {Linear\\Output};
+% ========================================================
+% PART 1: MACRO ARCHITECTURE (Top Row)
+% ========================================================
 
-\draw[arr] (in) -- (mel);
+\node[tensor, fill=gray!10, draw=gray!80!black] (audio) {\textbf{Audio}\\\scriptsize $1 \times 160000$};
+\node[tensor, right=0.8cm of audio] (mel) {\textbf{Mel-Spec}\\\scriptsize $1 \times 128 \times 313$};
+\draw[arr] (audio) -- node[above, labelnode] {Pre-process} (mel);
+
+\node[tensor, right=0.8cm of mel] (stem) {\textbf{Stem Block}\\\scriptsize Conv $7\times7$\\ \scriptsize MaxPool $3\times3$\\\scriptsize $96 \times 32 \times 79$};
 \draw[arr] (mel) -- (stem);
+
+\node[tensor, right=0.8cm of stem] (stage1) {\textbf{Stage 1}\\\scriptsize $2\times$ SE-ResBlock\\\scriptsize $96 \times 32 \times 79$};
 \draw[arr] (stem) -- (stage1);
+
+\node[tensor, right=0.8cm of stage1] (stage2) {\textbf{Stage 2}\\\scriptsize $2\times$ SE-ResBlock\\\scriptsize $192 \times 16 \times 40$};
 \draw[arr] (stage1) -- (stage2);
+
+\node[tensor, right=0.8cm of stage2] (stage3) {\textbf{Stage 3}\\\scriptsize $2\times$ SE-ResBlock\\\scriptsize $384 \times 8 \times 20$};
 \draw[arr] (stage2) -- (stage3);
-\draw[arr] (stage3) -- (gap);
-\draw[arr] (gap) -- (fc);
 
-% Micro Architecture (Zoomed in on SE-ResBlock)
-\node[below=2cm of stage2, font=\sffamily\small\bfseries] (zoomtitle) {Internal Structure of a Squeeze-and-Excitation Residual Block};
+\node[gap, right=0.8cm of stage3] (gapnode) {\textbf{Global Avg}\\\textbf{Pooling}\\\scriptsize $384 \times 1 \times 1$};
+\draw[arr] (stage3) -- (gapnode);
 
-\node[box, below=1cm of zoomtitle, xshift=-4.5cm] (blockin) {Input $\mathbf{X}$};
-\node[box, right=1cm of blockin] (conv1) {Conv $3\times 3$};
-\node[box, right=1cm of conv1] (conv2) {Conv $3\times 3$};
-\node[circle, draw=gray!80, thick, fill=gray!10, right=1.5cm of conv2, font=\scriptsize] (plus) {$+$};
-\node[box, right=1cm of plus] (blockout) {Output};
+\node[tensor, fill=purple!5, draw=purple!80!black, right=0.8cm of gapnode] (output) {\textbf{FC Output}\\\scriptsize $1 \times 1$\\\textbf{Speed (km/h)}};
+\draw[arr] (gapnode) -- (output);
 
-\draw[arr] (blockin) -- (conv1);
+% Bounding Box for Macro
+\node[draw=gray!50, thick, dashed, rounded corners=5pt, fit=(audio) (output), inner sep=0.4cm] (macrobox) {};
+\node[anchor=south west, font=\sffamily\normalsize\bfseries, color=gray!80!black] at (macrobox.north west) {(A) Macro Architecture: Amplitude-Preserving SE-ResNet Pipeline};
+
+
+% ========================================================
+% PART 2: MICRO ARCHITECTURE (Bottom Row)
+% ========================================================
+
+\node[tensor, below=4.5cm of mel] (xin) {\textbf{Input Map}\\\scriptsize $\mathbf{X}_{in} \in \mathbb{R}^{C \times H \times W}$};
+
+\node[tensor, right=1.2cm of xin] (conv1) {\textbf{Conv $3\times3$}\\\scriptsize BN + ReLU};
+\draw[arr] (xin) -- (conv1);
+
+\node[tensor, right=1.2cm of conv1] (conv2) {\textbf{Conv $3\times3$}\\\scriptsize BN};
 \draw[arr] (conv1) -- (conv2);
-\draw[arr] (plus) -- (blockout);
 
-% Residual skip connection
-\draw[arr] (blockin.south) -- ++(0,-0.6) -| node[pos=0.25, below, font=\sffamily\scriptsize] {Identity Skip Connection} (plus.south);
+% The Scale operation (Multiply) comes after Conv2, before Add
+\node[op, fill=orange!20, draw=orange!80!black, right=1.5cm of conv2] (mult) {$\otimes$};
+\draw[arr] (conv2) -- (mult);
 
-% SE Branch
-\node[sebox, above=0.8cm of conv2] (sefc2) {FC, Sigmoid};
-\node[sebox, left=0.6cm of sefc2] (sefc1) {FC, ReLU};
-\node[sebox, left=0.6cm of sefc1] (segap) {Global Pool};
+\node[op, right=1.5cm of mult] (add) {$+$};
+\draw[arr] (mult) -- (add);
 
+\node[tensor, right=1.2cm of add] (xout) {\textbf{Output Map}\\\scriptsize $\text{ReLU}(\widetilde{\mathbf{X}} + \mathbf{X}_{in})$};
+\draw[arr] (add) -- (xout);
+
+% Residual Skip Connection (Identity)
+\draw[arr] (xin.south) -- ++(0, -1.2) -| node[pos=0.25, below, labelnode] {Identity Skip Connection (or $1\times1$ Projection for matching dimensions)} (add.south);
+
+% SE Branch (Extracts from Conv2 output, injects into Multiplier)
+\node[seop, above=1.5cm of conv2, xshift=1.5cm] (segap) {\textbf{Global Avg Pool}\\\scriptsize Squeeze: $C \times 1 \times 1$};
 \draw[arr] (conv2.north) -- ++(0, 0.4) -| (segap.south);
-\draw[arr] (segap) -- (sefc1);
-\draw[arr] (sefc1) -- (sefc2);
 
-\node[circle, draw=gray!80, thick, fill=orange!10, right=0.8cm of sefc2, font=\scriptsize] (times) {$\otimes$};
-\draw[arr] (sefc2) -- (times);
+\node[seop, right=0.8cm of segap] (fc1) {\textbf{FC layer}\\\scriptsize ReLU, $C/r$};
+\draw[arr] (segap) -- (fc1);
 
-% The SE attention modulation applies to the residual output BEFORE the addition
-\draw[arr] (conv2.east) -| (times.south);
-\draw[arr] (times.east) -| node[pos=0.7, right, font=\sffamily\scriptsize] {Attention} (plus.north);
+\node[seop, right=0.8cm of fc1] (fc2) {\textbf{FC layer}\\\scriptsize Sigmoid, $C$};
+\draw[arr] (fc1) -- (fc2);
 
-% Bounding box for Micro
-\node[draw=gray!50, dashed, thick, rounded corners, fit=(zoomtitle) (blockin) (blockout) (sefc2) (plus) (times)] (microbox) {};
-\draw[gray!50, dashed, thick] (stage2.south) -- (microbox.north);
+\draw[arr] (fc2.south) |- node[pos=0.75, above, labelnode] {Excitation ($\mathbf{s}$)} (mult.east);
+
+% Bounding Box for Micro
+\node[draw=gray!50, thick, dashed, rounded corners=5pt, fit=(xin) (xout) (segap) (fc2) (add), inner sep=0.5cm] (microbox) {};
+\node[anchor=south west, font=\sffamily\normalsize\bfseries, color=gray!80!black] at (microbox.north west) {(B) Micro Architecture: Squeeze-and-Excitation Residual Block (SE-ResBlock)};
+
+% Link Macro to Micro
+\draw[gray!60, very thick, dotted] (stage2.south west) -- (microbox.north west);
+\draw[gray!60, very thick, dotted] (stage2.south east) -- (microbox.north east);
 
 \end{tikzpicture}
-\caption{Modern Macro-Micro Architecture of the Amplitude-Preserving SE-ResNet. The top row illustrates the high-level data flow, while the bottom box provides an exploded view of a single Squeeze-and-Excitation (SE) Residual Block, highlighting the parallel temporal attention mechanism.}
+}
+\caption{Detailed schematic of the Amplitude-Preserving SE-ResNet. \textbf{(A)} High-level macro architecture detailing the progression of tensor dimensions as the spatial resolution is downsampled and channel capacity is expanded. \textbf{(B)} Exploded micro-architecture of a single SE-ResBlock, illustrating the dual-path structure where the temporal/spatial features are processed by $3 \times 3$ convolutions, while the Squeeze-and-Excitation (SE) branch dynamically models cross-channel interdependencies to recalibrate the feature maps prior to the residual addition.}
 \label{fig:architecture}
 \end{figure*}
 
