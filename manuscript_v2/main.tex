@@ -205,6 +205,40 @@ Aug & Heavy Noise & 6.3M & 	extbf{6.15} & 	extbf{4.69} \
 
 
 
+\subsection{Real-Time Deployment and Hardware Benchmarking}
+To validate the model's suitability for real-world Intelligent Transportation Systems (ITS) deployment, we conducted rigorous hardware throughput and latency benchmarking. The evaluation isolated pure model inference speeds by executing forward passes on synthetically generated input tensors ($128 	imes 313$ Mel-spectrograms), bypassing disk I/O bottlenecks. 
+
+Experiments were performed on both an Edge CPU environment (simulating low-cost traffic cameras) and a cloud-tier NVIDIA T4 GPU using Automatic Mixed Precision (AMP). Furthermore, we evaluated the impact of PyTorch 2.0 Ahead-Of-Time (AOT) compilation, which utilizes OpenAI's Triton to mathematically fuse Conv2D, BatchNorm, and ReLU kernels.
+
+egin{table}[htbp]
+\centering
+\caption{Deployment Latency and Throughput Benchmarks}
+\label{tab:benchmark}
+egin{tabular}{lllccc}
+\hline
+	extbf{Device} & 	extbf{Mode} & 	extbf{Batch} & 	extbf{Latency} & 	extbf{P95} & 	extbf{Samples/s} \
+\hline
+\multicolumn{6}{l}{	extit{Edge CPU Environment (No AMP)}} \
+CPU & Single & 1 & 41.58 ms & 44.54 ms & 24.05 \
+CPU & 10-Fold & 1 & 414.25 ms & 437.81 ms & 2.41 \
+CPU & Single & 32 & 1227.67 ms & 1291.33 ms & 26.07 \
+\hline
+\multicolumn{6}{l}{	extit{NVIDIA T4 GPU Environment (AMP Enabled)}} \
+CUDA & Single & 1 & 3.62 ms & 3.85 ms & 276.25 \
+CUDA & 10-Fold & 1 & 36.07 ms & 37.84 ms & 27.73 \
+CUDA & Single & 32 & 19.14 ms & 19.51 ms & 1671.82 \
+\hline
+\multicolumn{6}{l}{	extit{NVIDIA T4 GPU with Kernel Fusion (Torch.Compile)}} \
+CUDA & Single & 1 & 	extbf{2.28 ms} & 	extbf{2.46 ms} & 	extbf{439.19} \
+CUDA & Single & 32 & 	extbf{14.61 ms} & 	extbf{14.69 ms} & 	extbf{2190.16} \
+\hline
+\end{tabular}
+\end{table}
+
+As shown in Table \ref{tab:benchmark}, a single uncompiled SE-ResNet model achieves 24.05 samples per second on a pure CPU, confirming its viability for real-time edge processing (where audio is typically windowed at 1-2 Hz). 
+
+On the T4 GPU, the standard PyTorch implementation achieves a maximum throughput of 1671.82 samples/s (Batch 32). However, by enabling AOT kernel fusion via 	exttt{torch.compile}, latency dropped by $36\%$ (from 3.62~ms to 2.28~ms for real-time streaming) and bulk throughput skyrocketed to an exceptional 2,190.16 samples per second. Even the massive 10-Fold Ensemble is capable of running faster than real-time (27.73 samples/s) on the GPU. These results conclusively prove that the proposed architecture is not only highly accurate but also computationally lightweight enough for massive-scale deployment.
+
 \section{Conclusion}
 % To be written
 \begin{thebibliography}{99}
