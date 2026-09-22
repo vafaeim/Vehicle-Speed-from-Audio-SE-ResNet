@@ -121,6 +121,34 @@ def run_benchmark(device_str: str, batch_sizes: List[int], use_amp: bool = True)
         }
         results.append(res_ens)
         print(f"     Mean: {mean_latency_ens:.2f}ms | P95: {p95_latency_ens:.2f}ms | Throughput: {throughput_ens:.2f} samples/s")
+        
+        # 3. Compiled Single Model Benchmark (if PyTorch >= 2.0 and CUDA)
+        if device.type == "cuda" and hasattr(torch, "compile"):
+            print("  -> Torch.Compiled Single Model (Kernel Fusion & Triton)...")
+            try:
+                compiled_model = torch.compile(single_model)
+                with torch.autocast(device_type=device.type, enabled=use_amp):
+                    # Torch compile has a very long warmup for AOT compilation
+                    times_comp = measure_latency(compiled_model, x, warmup=30, rep=100)
+                mean_comp = np.mean(times_comp)
+                p95_comp = np.percentile(times_comp, 95)
+                p99_comp = np.percentile(times_comp, 99)
+                throughput_comp = (b * 1000.0) / mean_comp
+                
+                res_comp = {
+                    "Device": "CUDA-COMPILED",
+                    "Mode": "Single Model",
+                    "Batch Size": b,
+                    "AMP": use_amp,
+                    "Mean Latency (ms)": round(mean_comp, 2),
+                    "P95 Latency (ms)": round(p95_comp, 2),
+                    "P99 Latency (ms)": round(p99_comp, 2),
+                    "Throughput (samples/s)": round(throughput_comp, 2)
+                }
+                results.append(res_comp)
+                print(f"     Mean: {mean_comp:.2f}ms | P95: {p95_comp:.2f}ms | Throughput: {throughput_comp:.2f} samples/s")
+            except Exception as e:
+                print(f"     [WARN] Torch Compile failed: {e}")
 
     return results
 
