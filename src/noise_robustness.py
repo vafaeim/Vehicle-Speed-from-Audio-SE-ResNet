@@ -67,35 +67,46 @@ def evaluate_ensemble_noise_curve(model_dir: str, data_dir: str, output_csv: str
         
     print(f"Found {len(model_paths)} models for Ensemble Evaluation.")
     
+    
     try:
+        import json
         with open("dataset_splits.json", "r") as f:
             splits = json.load(f)
-        test_paths = splits["test_paths"]
+        test_paths_json = splits["test_paths"]
         stats = splits["stats"]
         mean_val = np.array(stats['mean'], dtype=np.float32)
         std_val = np.array(stats['std'], dtype=np.float32)
         
-        test_basenames = [os.path.basename(p) for p in test_paths]
+        from src.utils import get_official_train_test_split
+        _, _, _, test_paths_official, test_speeds_official, _ = get_official_train_test_split(data_dir)
+        
+        # We need to map basename to speed, because the absolute paths might be different
+        # between Kaggle environments
+        basename_to_speed = {os.path.basename(p): s for p, s in zip(test_paths_official, test_speeds_official)}
         
         final_test_paths = []
         final_test_speeds = []
-        for b in test_basenames:
-            speed = float(re.search(r'_(\d+\.\d+)\.wav', b).group(1))
-            final_test_speeds.append(speed)
-            
-            found = glob.glob(f"{data_dir}/**/{b}", recursive=True)
-            if found:
-                final_test_paths.append(found[0])
-            else:
-                final_test_paths.append(b)
         
+        for p in test_paths_json:
+            b = os.path.basename(p)
+            if b in basename_to_speed:
+                final_test_speeds.append(basename_to_speed[b])
+                
+                # Find correct path in current data_dir
+                found = glob.glob(f"{data_dir}/**/{b}", recursive=True)
+                if found:
+                    final_test_paths.append(found[0])
+                else:
+                    final_test_paths.append(p)
+            else:
+                print(f"Warning: could not find speed for {b}")
+                
         test_speeds = np.array(final_test_speeds)
         
     except Exception as e:
         print(f"Error loading dataset_splits.json or matching data: {e}")
         return
-
-    ensemble = []
+ensemble = []
     for p in model_paths:
         # Load the architecture with SE (this is the SOTA model)
         # Note: if they pass a baseline no-se model directory, this hardcoded use_se=True will fail.
