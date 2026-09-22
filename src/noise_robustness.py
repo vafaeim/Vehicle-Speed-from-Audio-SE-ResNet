@@ -60,9 +60,9 @@ class NoiseTestDataset(Dataset):
 def evaluate_ensemble_noise_curve(model_dir: str, data_dir: str, output_csv: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    model_paths = glob.glob(os.path.join(model_dir, "*.pth"))
+    model_paths = glob.glob(os.path.join(model_dir, "*.pt"))
     if not model_paths:
-        print(f"Error: No .pth files found in {model_dir}")
+        print(f"Error: No .pt files found in {model_dir}")
         return
         
     print(f"Found {len(model_paths)} models for Ensemble Evaluation.")
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_dir", type=str, default="data/vs13", help="Dataset directory")
     parser.add_argument("--output", type=str, default="noise_robustness.csv", help="Output CSV file")
-    parser.add_argument("--model_dir", type=str, required=True, help="Directory containing the 10-fold .pth weights")
+    parser.add_argument("--model_dir", type=str, required=True, help="Directory containing the 10-fold .pt weights")
     args = parser.parse_args()
     
     evaluate_ensemble_noise_curve(args.model_dir, args.data_dir, args.output)
