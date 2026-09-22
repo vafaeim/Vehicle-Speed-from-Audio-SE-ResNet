@@ -106,7 +106,7 @@ def evaluate_ensemble_noise_curve(model_dir: str, data_dir: str, output_csv: str
     except Exception as e:
         print(f"Error loading dataset_splits.json or matching data: {e}")
         return
-ensemble = []
+    ensemble = []
     for p in model_paths:
         # Load the architecture with SE (this is the SOTA model)
         # Note: if they pass a baseline no-se model directory, this hardcoded use_se=True will fail.
