@@ -202,10 +202,8 @@ def get_ablation_configs(group_name: str) -> List[AblationConfig]:
         return list(GROUP_SE)
     elif cleaned == "depth":
         return list(GROUP_DEPTH)
-    elif cleaned == "aug":
-        return list(GROUP_AUG)
     elif cleaned == "all":
-        return list(GROUP_SE) + list(GROUP_DEPTH) + list(GROUP_AUG)
+        return list(GROUP_SE) + list(GROUP_DEPTH)
     else:
         raise ValueError(
             f"Unknown ablation group '{group_name}'. Must be one of: 'all', 'se', 'depth'."
