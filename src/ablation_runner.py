@@ -515,6 +515,7 @@ def train_ablation_variant(
     from copy import deepcopy
     from torch.utils.data import DataLoader
     from src.models_torch import build_se_resnet
+    from src.utils import SortedKFold
     
     random.seed(42)
     np.random.seed(42)
