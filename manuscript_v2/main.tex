@@ -130,22 +130,23 @@ This dynamic recalibration ensures the network amplifies features critical to Do
 \begin{tikzpicture}[
     >=stealth,
     font=\sffamily\small,
-    % Define styles for the blocks
-    tensor/.style={rectangle, draw=blue!80!black, fill=blue!5, thick, rounded corners=3pt, minimum width=2.4cm, minimum height=1.6cm, align=center, drop shadow={opacity=0.15, shadow xshift=2pt, shadow yshift=-2pt}},
-    op/.style={circle, draw=green!60!black, fill=green!5, thick, minimum size=0.9cm, align=center, drop shadow={opacity=0.15}, inner sep=0pt, font=\Large\bfseries},
-    seop/.style={rectangle, draw=orange!80!black, fill=orange!5, thick, rounded corners=3pt, minimum width=2.2cm, minimum height=1.2cm, align=center, drop shadow={opacity=0.15}},
-    gap/.style={rectangle, draw=red!80!black, fill=red!5, thick, rounded corners=3pt, minimum width=2.4cm, minimum height=1.6cm, align=center, drop shadow={opacity=0.15}},
-    arr/.style={->, thick, draw=black!80},
-    dashedarr/.style={->, thick, dashed, draw=black!80},
-    labelnode/.style={font=\sffamily\scriptsize\color{black!80}, align=center}
+    % Modern Gradient Styles
+    tensor/.style={rectangle, draw=blue!60!black, line width=1pt, top color=blue!2, bottom color=blue!15, rounded corners=4pt, minimum width=2.4cm, minimum height=1.6cm, align=center, drop shadow={opacity=0.15, shadow xshift=2pt, shadow yshift=-2pt}},
+    op/.style={circle, draw=green!60!black, line width=1pt, inner color=green!5, outer color=green!25, minimum size=0.9cm, align=center, drop shadow={opacity=0.15}, inner sep=0pt, font=\Large\bfseries},
+    seop/.style={rectangle, draw=orange!70!black, line width=1pt, top color=orange!2, bottom color=orange!20, rounded corners=4pt, minimum width=2.2cm, minimum height=1.2cm, align=center, drop shadow={opacity=0.15}},
+    gap/.style={rectangle, draw=red!70!black, line width=1pt, top color=red!2, bottom color=red!15, rounded corners=4pt, minimum width=2.4cm, minimum height=1.6cm, align=center, drop shadow={opacity=0.15}},
+    io/.style={rectangle, draw=gray!70!black, line width=1pt, top color=gray!5, bottom color=gray!20, rounded corners=4pt, minimum width=2.4cm, minimum height=1.6cm, align=center, drop shadow={opacity=0.15}},
+    arr/.style={->, line width=1.2pt, draw=black!70},
+    dashedarr/.style={->, line width=1.2pt, dashed, draw=black!70},
+    labelnode/.style={font=\sffamily\scriptsize\color{black!80}, align=center, fill=white, fill opacity=0.8, text opacity=1, rounded corners=2pt, inner sep=2pt}
 ]
 
 % ========================================================
 % PART 1: MACRO ARCHITECTURE (Top Row)
 % ========================================================
 
-\node[tensor, fill=gray!10, draw=gray!80!black] (audio) {\textbf{Audio}\\\scriptsize $1 \times 160000$};
-\node[tensor, right=0.8cm of audio] (mel) {\textbf{Mel-Spec}\\\scriptsize $1 \times 128 \times 313$};
+\node[io] (audio) {\textbf{Audio Waveform}\\\scriptsize $1 \times 160000$};
+\node[tensor, right=0.8cm of audio] (mel) {\textbf{Mel-Spectrogram}\\\scriptsize $1 \times 128 \times 313$};
 \draw[arr] (audio) -- node[above, labelnode] {Pre-process} (mel);
 
 \node[tensor, right=0.8cm of mel] (stem) {\textbf{Stem Block}\\\scriptsize Conv $7\times7$\\ \scriptsize MaxPool $3\times3$\\\scriptsize $96 \times 32 \times 79$};
@@ -163,11 +164,11 @@ This dynamic recalibration ensures the network amplifies features critical to Do
 \node[gap, right=0.8cm of stage3] (gapnode) {\textbf{Global Avg}\\\textbf{Pooling}\\\scriptsize $384 \times 1 \times 1$};
 \draw[arr] (stage3) -- (gapnode);
 
-\node[tensor, fill=purple!5, draw=purple!80!black, right=0.8cm of gapnode] (output) {\textbf{FC Output}\\\scriptsize $1 \times 1$\\\textbf{Speed (km/h)}};
+\node[io, right=0.8cm of gapnode] (output) {\textbf{Velocity Output}\\\scriptsize $1 \times 1$\\\textbf{km/h}};
 \draw[arr] (gapnode) -- (output);
 
 % Bounding Box for Macro
-\node[draw=gray!50, thick, dashed, rounded corners=5pt, fit=(audio) (output), inner sep=0.4cm] (macrobox) {};
+\node[draw=gray!50, line width=1.5pt, dashed, rounded corners=8pt, fit=(audio) (output), inner sep=0.4cm] (macrobox) {};
 \node[anchor=south west, font=\sffamily\normalsize\bfseries, color=gray!80!black] at (macrobox.north west) {(A) Macro Architecture: Amplitude-Preserving SE-ResNet Pipeline};
 
 
@@ -184,17 +185,17 @@ This dynamic recalibration ensures the network amplifies features critical to Do
 \draw[arr] (conv1) -- (conv2);
 
 % The Scale operation (Multiply) comes after Conv2, before Add
-\node[op, fill=orange!20, draw=orange!80!black, right=1.5cm of conv2] (mult) {$\otimes$};
+\node[op, inner color=orange!10, outer color=orange!30, draw=orange!80!black, right=1.5cm of conv2] (mult) {$\otimes$};
 \draw[arr] (conv2) -- (mult);
 
-\node[op, right=1.5cm of mult] (add) {$+$};
+\node[op, right=1.5cm of mult] (add) {$\mathbf{+}$};
 \draw[arr] (mult) -- (add);
 
 \node[tensor, right=1.2cm of add] (xout) {\textbf{Output Map}\\\scriptsize $\text{ReLU}(\widetilde{\mathbf{X}} + \mathbf{X}_{in})$};
 \draw[arr] (add) -- (xout);
 
 % Residual Skip Connection (Identity)
-\draw[arr] (xin.south) -- ++(0, -1.2) -| node[pos=0.25, below, labelnode] {Identity Skip Connection (or $1\times1$ Projection for matching dimensions)} (add.south);
+\draw[arr] (xin.south) -- ++(0, -1.2) -| node[pos=0.25, below, labelnode] {Identity Skip Connection (or $1\times1$ Projection for depth matching)} (add.south);
 
 % SE Branch (Extracts from Conv2 output, injects into Multiplier)
 \node[seop, above=1.5cm of conv2, xshift=1.5cm] (segap) {\textbf{Global Avg Pool}\\\scriptsize Squeeze: $C \times 1 \times 1$};
@@ -206,15 +207,15 @@ This dynamic recalibration ensures the network amplifies features critical to Do
 \node[seop, right=0.8cm of fc1] (fc2) {\textbf{FC layer}\\\scriptsize Sigmoid, $C$};
 \draw[arr] (fc1) -- (fc2);
 
-\draw[arr] (fc2.south) |- node[pos=0.75, above, labelnode] {Excitation ($\mathbf{s}$)} (mult.east);
+\draw[arr] (fc2.south) |- node[pos=0.75, above, labelnode] {Excitation Weight ($\mathbf{s}$)} (mult.east);
 
 % Bounding Box for Micro
-\node[draw=gray!50, thick, dashed, rounded corners=5pt, fit=(xin) (xout) (segap) (fc2) (add), inner sep=0.5cm] (microbox) {};
+\node[draw=gray!50, line width=1.5pt, dashed, rounded corners=8pt, fit=(xin) (xout) (segap) (fc2) (add), inner sep=0.5cm] (microbox) {};
 \node[anchor=south west, font=\sffamily\normalsize\bfseries, color=gray!80!black] at (microbox.north west) {(B) Micro Architecture: Squeeze-and-Excitation Residual Block (SE-ResBlock)};
 
 % Link Macro to Micro
-\draw[gray!60, very thick, dotted] (stage2.south west) -- (microbox.north west);
-\draw[gray!60, very thick, dotted] (stage2.south east) -- (microbox.north east);
+\draw[gray!50, line width=2pt, dotted] (stage2.south west) -- (microbox.north west);
+\draw[gray!50, line width=2pt, dotted] (stage2.south east) -- (microbox.north east);
 
 \end{tikzpicture}
 }
