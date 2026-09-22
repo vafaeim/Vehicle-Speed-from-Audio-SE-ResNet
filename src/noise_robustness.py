@@ -72,8 +72,8 @@ def evaluate_ensemble_noise_curve(model_dir: str, data_dir: str, output_csv: str
             splits = json.load(f)
         test_paths = splits["test_paths"]
         stats = splits["stats"]
-        mean_val = float(stats['mean'])
-        std_val = float(stats['std'])
+        mean_val = np.array(stats['mean'], dtype=np.float32)
+        std_val = np.array(stats['std'], dtype=np.float32)
         
         test_basenames = [os.path.basename(p) for p in test_paths]
         
