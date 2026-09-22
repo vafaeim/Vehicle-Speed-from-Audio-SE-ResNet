@@ -1,5 +1,5 @@
 \documentclass[conference]{IEEEtran}
-\usepackage{cite}
+% \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{algorithmic}
 \usepackage{graphicx}
@@ -18,7 +18,7 @@
 \title{Vehicle Speed Estimation from Single-Channel Audio using Amplitude-Preserving SE-ResNet\\
 }
 
-\author{\IEEEauthor কমপক্ষে2 \\
+\author{\IEEEauthorblockN{Anonymous Authors} \\
 % Author block will go here
 }
 
@@ -84,6 +84,7 @@ Approaches to this problem have transitioned from physics-driven modeling to dat
 
 \begin{figure*}[htbp]
 \centering
+\resizebox{\textwidth}{!}{
 \begin{tikzpicture}[
     node distance=1.5cm and 2cm,
     box/.style={rectangle, draw, thick, align=center, fill=blue!10, rounded corners=2pt, font=\small},
@@ -124,11 +125,12 @@ Approaches to this problem have transitioned from physics-driven modeling to dat
 \draw[arrow] (pool) -- (output);
 
 % SE Connections
-\draw[arrow, dashed] (stage1) <-> (se1);
-\draw[arrow, dashed] (stage2) <-> (se2);
-\draw[arrow, dashed] (stage3) <-> (se3);
+\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage1) -- (se1);
+\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage2) -- (se2);
+\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage3) -- (se3);
 
 \end{tikzpicture}
+}
 \caption{The proposed Amplitude-Preserving SE-ResNet Architecture. Raw audio is converted to Mel-spectrograms without destructive peak-normalization, preserving the inverse-square law of acoustic loudness. Features are processed through 3 residual stages, each heavily modulated by a Squeeze-and-Excitation (SE) attention mechanism to isolate vehicle friction frequencies.}
 \label{fig:architecture}
 \end{figure*}
@@ -145,101 +147,106 @@ The proposed model was evaluated against the 81 blind test samples. To ensure ma
 
 As shown in Table \ref{tab:sota}, the proposed Amplitude-Preserving SE-ResNet achieves a Root Mean Square Error (RMSE) of $5.41$~km/h and a Mean Absolute Error (MAE) of $4.19$~km/h. This not only significantly outperforms the previous baseline of $7.87$~km/h for single-modality acoustic methods \cite{ref9}, but it completely surpasses the multi-modal Audio-Visual state-of-the-art ($6.54$~km/h) \cite{ref10}, achieving a $1.13$~km/h absolute improvement while requiring only a single microphone.
 
-To quantify the stability of the architecture, we also evaluated the expected performance of a 	extit{single} model without ensembling. The average single-model performance across the 10 folds was $6.18 \pm 0.26$~km/h RMSE, confirming that even without the computational overhead of ensembling, the proposed architecture remains superior to existing methods. Furthermore, a One-Way ANOVA across the 13 vehicle classes yielded $F = 1.288$ ($p = 0.2458$), indicating that the model's accuracy is highly consistent regardless of vehicle type.
+To quantify the stability of the architecture, we also evaluated the expected performance of a \textit{single} model without ensembling. The average single-model performance across the 10 folds was $6.18 \pm 0.26$~km/h RMSE, confirming that even without the computational overhead of ensembling, the proposed architecture remains superior to existing methods. Furthermore, a One-Way ANOVA across the 13 vehicle classes yielded $F = 1.288$ ($p = 0.2458$), indicating that the model's accuracy is highly consistent regardless of vehicle type.
 
-egin{table}[htbp]
+\begin{table}[htbp]
 \centering
 \caption{Comparison with State-of-the-Art on the VS13 Dataset}
 \label{tab:sota}
-egin{tabular}{lllc}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lllc}
 \hline
-	extbf{Method} & 	extbf{Modality} & 	extbf{RMSE} & 	extbf{MAE} \
+\textbf{Method} & \textbf{Modality} & \textbf{RMSE} & \textbf{MAE} \\
 \hline
-$\epsilon$-SVR (MA Features) \cite{ref13} & Audio & $6.92$ & - \
-1D-CNN (Raw Waveform) \cite{ref4} & Audio & $8.88$ & $5.96$ \
-$\epsilon$-SVR (Mel-Spectrogram) \cite{ref9} & Audio & $7.87$ & $6.02$ \
-Deep Wavelet-Fourier \cite{ref10} & Audio+Video & $6.54$ & $4.59$ \
+$\epsilon$-SVR (MA Features) \cite{ref13} & Audio & $6.92$ & - \\
+1D-CNN (Raw Waveform) \cite{ref4} & Audio & $8.88$ & $5.96$ \\
+$\epsilon$-SVR (Mel-Spectrogram) \cite{ref9} & Audio & $7.87$ & $6.02$ \\
+Deep Wavelet-Fourier \cite{ref10} & Audio+Video & $6.54$ & $4.59$ \\
 \hline
-	extbf{Proposed SE-ResNet (Single)} & 	extbf{Audio} & $6.18 \pm 0.26$ & $4.84 \pm 0.26$ \
-	extbf{Proposed SE-ResNet (10-Fold)} & 	extbf{Audio} & $\mathbf{5.41}$ & $\mathbf{4.19}$ \
+\textbf{Proposed SE-ResNet (Single)} & \textbf{Audio} & $6.18 \pm 0.26$ & $4.84 \pm 0.26$ \\
+\textbf{Proposed SE-ResNet (10-Fold)} & \textbf{Audio} & $\mathbf{5.41}$ & $\mathbf{4.19}$ \\
 \hline
 \end{tabular}
+}
 \end{table}
 
 \subsection{Systematic Ablation Study}
 To isolate the contribution of individual architectural components and environmental augmentations, a rigorous ablation study was performed. Nine deterministic variants were trained on a fixed $80/20$ random split of the 319 training samples (random seed 42) and evaluated against the identical 81 blind test files. The results are summarized in Table \ref{tab:ablation}.
 
-egin{table}[htbp]
+\begin{table}[htbp]
 \centering
 \caption{Systematic Ablation Study on Test Set (N=81)}
 \label{tab:ablation}
-egin{tabular}{llccc}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{llccc}
 \hline
-	extbf{Group} & 	extbf{Variant} & 	extbf{Params} & 	extbf{RMSE} & 	extbf{MAE} \
+\textbf{Group} & \textbf{Variant} & \textbf{Params} & \textbf{RMSE} & \textbf{MAE} \\
 \hline
-\multicolumn{5}{l}{	extit{Squeeze-and-Excitation Ratio ($r$)}} \
-SE & Baseline (No SE) & 6.2M & 7.27 & 5.68 \
-SE & SE-ResNet (r=16)* & 6.3M & 6.55 & 5.19 \
-SE & SE-ResNet (r=8) & 6.3M & 6.39 & 5.15 \
-SE & SE-ResNet (r=32) & 6.2M & 	extbf{5.78} & 	extbf{4.47} \
+\multicolumn{5}{l}{\textit{Squeeze-and-Excitation Ratio ($r$)}} \\
+SE & Baseline (No SE) & 6.2M & 7.27 & 5.68 \\
+SE & SE-ResNet (r=16)* & 6.3M & 6.55 & 5.19 \\
+SE & SE-ResNet (r=8) & 6.3M & 6.39 & 5.15 \\
+SE & SE-ResNet (r=32) & 6.2M & \textbf{5.78} & \textbf{4.47} \\
 \hline
-\multicolumn{5}{l}{	extit{Network Depth}} \
-Depth & Shallow (2 stages) & 1.5M & 9.10 & 7.41 \
-Depth & Standard (3 stages)* & 6.3M & 6.55 & 5.19 \
-Depth & Deep (4 stages) & 15.4M & 	extbf{6.44} & 	extbf{5.31} \
+\multicolumn{5}{l}{\textit{Network Depth}} \\
+Depth & Shallow (2 stages) & 1.5M & 9.10 & 7.41 \\
+Depth & Standard (3 stages)* & 6.3M & 6.55 & 5.19 \\
+Depth & Deep (4 stages) & 15.4M & \textbf{6.44} & \textbf{5.31} \\
 \hline
-\multicolumn{5}{l}{	extit{Acoustic Environment Augmentation}} \
-Aug & No Aug (Clean) & 6.3M & 6.39 & 4.84 \
-Aug & Standard Noise* & 6.3M & 6.55 & 5.19 \
-Aug & Heavy Noise & 6.3M & 	extbf{6.15} & 	extbf{4.69} \
+\multicolumn{5}{l}{\textit{Acoustic Environment Augmentation}} \\
+Aug & No Aug (Clean) & 6.3M & 6.39 & 4.84 \\
+Aug & Standard Noise* & 6.3M & 6.55 & 5.19 \\
+Aug & Heavy Noise & 6.3M & \textbf{6.15} & \textbf{4.69} \\
 \hline
 \multicolumn{5}{l}{\scriptsize *Denotes the Control Baseline configuration (r=16, 3 Stage, Std Noise).}
 \end{tabular}
+}
 \end{table}
 
-	extbf{Squeeze-and-Excitation:} The inclusion of SE blocks universally improved performance compared to the Baseline ResNet ($7.27$~km/h). Interestingly, on a single-fold basis, $r=32$ provided the strongest regularization ($5.78$~km/h), although $r=8$ was selected during global hyperparameter optimization. This highlights the importance of the SE mechanism in dynamically attending to relevant Doppler frequency bands while suppressing static noise.
+\textbf{Squeeze-and-Excitation:} The inclusion of SE blocks universally improved performance compared to the Baseline ResNet ($7.27$~km/h). Interestingly, on a single-fold basis, $r=32$ provided the strongest regularization ($5.78$~km/h), although $r=8$ was selected during global hyperparameter optimization. This highlights the importance of the SE mechanism in dynamically attending to relevant Doppler frequency bands while suppressing static noise.
 
-	extbf{Network Depth:} The shallow 2-stage network severely underfitted the data ($9.10$~km/h), lacking the hierarchical receptive field necessary to capture complex velocity curves. Conversely, increasing depth to 4 stages yielded marginal improvements ($6.44$~km/h) over the 3-stage baseline ($6.55$~km/h) at the cost of more than doubling the parameter count (15.4M).
+\textbf{Network Depth:} The shallow 2-stage network severely underfitted the data ($9.10$~km/h), lacking the hierarchical receptive field necessary to capture complex velocity curves. Conversely, increasing depth to 4 stages yielded marginal improvements ($6.44$~km/h) over the 3-stage baseline ($6.55$~km/h) at the cost of more than doubling the parameter count (15.4M).
 
-	extbf{Augmentation:} Surprisingly, Heavy Noise (SNR 0-10dB) resulted in the best single-model generalization ($6.15$~km/h) within this specific random fold, outperforming Clean Audio ($6.39$~km/h) and Standard Noise ($6.55$~km/h). This suggests that severe acoustic distortion forces the network to learn deeper, scale-invariant Doppler shift features rather than memorizing superficial amplitude patterns.
-
-
+\textbf{Augmentation:} Surprisingly, Heavy Noise (SNR 0-10dB) resulted in the best single-model generalization ($6.15$~km/h) within this specific random fold, outperforming Clean Audio ($6.39$~km/h) and Standard Noise ($6.55$~km/h). This suggests that severe acoustic distortion forces the network to learn deeper, scale-invariant Doppler shift features rather than memorizing superficial amplitude patterns.
 
 \subsection{Real-Time Deployment and Hardware Benchmarking}
-To validate the model's suitability for real-world Intelligent Transportation Systems (ITS) deployment, we conducted rigorous hardware throughput and latency benchmarking. The evaluation isolated pure model inference speeds by executing forward passes on synthetically generated input tensors ($128 	imes 313$ Mel-spectrograms), bypassing disk I/O bottlenecks. 
+To validate the model's suitability for real-world Intelligent Transportation Systems (ITS) deployment, we conducted rigorous hardware throughput and latency benchmarking. The evaluation isolated pure model inference speeds by executing forward passes on synthetically generated input tensors ($128 \times 313$ Mel-spectrograms), bypassing disk I/O bottlenecks. 
 
 Experiments were performed on both an Edge CPU environment (simulating low-cost traffic cameras) and a cloud-tier NVIDIA T4 GPU using Automatic Mixed Precision (AMP). Furthermore, we evaluated the impact of PyTorch 2.0 Ahead-Of-Time (AOT) compilation, which utilizes OpenAI's Triton to mathematically fuse Conv2D, BatchNorm, and ReLU kernels.
 
-egin{table}[htbp]
+\begin{table}[htbp]
 \centering
 \caption{Deployment Latency and Throughput Benchmarks}
 \label{tab:benchmark}
-egin{tabular}{lllccc}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lllccc}
 \hline
-	extbf{Device} & 	extbf{Mode} & 	extbf{Batch} & 	extbf{Latency} & 	extbf{P95} & 	extbf{Samples/s} \
+\textbf{Device} & \textbf{Mode} & \textbf{Batch} & \textbf{Latency} & \textbf{P95} & \textbf{Samples/s} \\
 \hline
-\multicolumn{6}{l}{	extit{Edge CPU Environment (No AMP)}} \
-CPU & Single & 1 & 41.58 ms & 44.54 ms & 24.05 \
-CPU & 10-Fold & 1 & 414.25 ms & 437.81 ms & 2.41 \
-CPU & Single & 32 & 1227.67 ms & 1291.33 ms & 26.07 \
+\multicolumn{6}{l}{\textit{Edge CPU Environment (No AMP)}} \\
+CPU & Single & 1 & 41.58 ms & 44.54 ms & 24.05 \\
+CPU & 10-Fold & 1 & 414.25 ms & 437.81 ms & 2.41 \\
+CPU & Single & 32 & 1227.67 ms & 1291.33 ms & 26.07 \\
 \hline
-\multicolumn{6}{l}{	extit{NVIDIA T4 GPU Environment (AMP Enabled)}} \
-CUDA & Single & 1 & 3.62 ms & 3.85 ms & 276.25 \
-CUDA & 10-Fold & 1 & 36.07 ms & 37.84 ms & 27.73 \
-CUDA & Single & 32 & 19.14 ms & 19.51 ms & 1671.82 \
+\multicolumn{6}{l}{\textit{NVIDIA T4 GPU Environment (AMP Enabled)}} \\
+CUDA & Single & 1 & 3.62 ms & 3.85 ms & 276.25 \\
+CUDA & 10-Fold & 1 & 36.07 ms & 37.84 ms & 27.73 \\
+CUDA & Single & 32 & 19.14 ms & 19.51 ms & 1671.82 \\
 \hline
-\multicolumn{6}{l}{	extit{NVIDIA T4 GPU with Kernel Fusion (Torch.Compile)}} \
-CUDA & Single & 1 & 	extbf{2.28 ms} & 	extbf{2.46 ms} & 	extbf{439.19} \
-CUDA & Single & 32 & 	extbf{14.61 ms} & 	extbf{14.69 ms} & 	extbf{2190.16} \
+\multicolumn{6}{l}{\textit{NVIDIA T4 GPU with Kernel Fusion (Torch.Compile)}} \\
+CUDA & Single & 1 & \textbf{2.28 ms} & \textbf{2.46 ms} & \textbf{439.19} \\
+CUDA & Single & 32 & \textbf{14.61 ms} & \textbf{14.69 ms} & \textbf{2190.16} \\
 \hline
 \end{tabular}
+}
 \end{table}
 
 As shown in Table \ref{tab:benchmark}, a single uncompiled SE-ResNet model achieves 24.05 samples per second on a pure CPU, confirming its viability for real-time edge processing (where audio is typically windowed at 1-2 Hz). 
 
-On the T4 GPU, the standard PyTorch implementation achieves a maximum throughput of 1671.82 samples/s (Batch 32). However, by enabling AOT kernel fusion via 	exttt{torch.compile}, latency dropped by $36\%$ (from 3.62~ms to 2.28~ms for real-time streaming) and bulk throughput skyrocketed to an exceptional 2,190.16 samples per second. Even the massive 10-Fold Ensemble is capable of running faster than real-time (27.73 samples/s) on the GPU. These results conclusively prove that the proposed architecture is not only highly accurate but also computationally lightweight enough for massive-scale deployment.
+On the T4 GPU, the standard PyTorch implementation achieves a maximum throughput of 1671.82 samples/s (Batch 32). However, by enabling AOT kernel fusion via \texttt{torch.compile}, latency dropped by $36\%$ (from 3.62~ms to 2.28~ms for real-time streaming) and bulk throughput skyrocketed to an exceptional 2,190.16 samples per second. Even the massive 10-Fold Ensemble is capable of running faster than real-time (27.73 samples/s) on the GPU. These results conclusively prove that the proposed architecture is not only highly accurate but also computationally lightweight enough for massive-scale deployment.
 
 \section{Conclusion}
+
 % To be written
 \begin{thebibliography}{99}
 \bibitem{ref1}
