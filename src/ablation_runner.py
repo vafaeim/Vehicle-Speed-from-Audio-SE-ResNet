@@ -193,34 +193,6 @@ GROUP_DEPTH: List[AblationConfig] = [
     ),
 ]
 
-GROUP_AUG: List[AblationConfig] = [
-    AblationConfig(
-        experiment_name="aug_none",
-        group="aug",
-        variant_type="clean",
-        variant_name="No Augmentation (Clean)",
-        use_noise=False,
-        augment_prob=0.0,
-    ),
-    AblationConfig(
-        experiment_name="aug_normal",
-        group="aug",
-        variant_type="noise_normal",
-        variant_name="Normal Noise (SNR 10-25dB)",
-        use_noise=True,
-        noise_snr_db=(10.0, 25.0),
-        augment_prob=0.8,
-    ),
-    AblationConfig(
-        experiment_name="aug_heavy",
-        group="aug",
-        variant_type="noise_heavy",
-        variant_name="Heavy Noise (SNR 0-10dB)",
-        use_noise=True,
-        noise_snr_db=(0.0, 10.0),
-        augment_prob=0.8,
-    ),
-]
 
 
 def get_ablation_configs(group_name: str) -> List[AblationConfig]:
@@ -236,7 +208,7 @@ def get_ablation_configs(group_name: str) -> List[AblationConfig]:
         return list(GROUP_SE) + list(GROUP_DEPTH) + list(GROUP_AUG)
     else:
         raise ValueError(
-            f"Unknown ablation group '{group_name}'. Must be one of: 'all', 'se', 'depth', 'aug'."
+            f"Unknown ablation group '{group_name}'. Must be one of: 'all', 'se', 'depth'."
         )
 
 
