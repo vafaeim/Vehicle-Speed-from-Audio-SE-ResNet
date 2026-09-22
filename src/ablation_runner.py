@@ -80,7 +80,7 @@ class AblationConfig:
     stages: int = 3
     base_filters: int = 96
     dropout: float = 0.3
-    noise_snr_db: Tuple[float, float] = (10.0, 25.0)
+    noise_snr_db: Tuple[float, float] = (20.0, 30.0)
     use_noise: bool = True
     augment_prob: float = 0.8
 
@@ -203,12 +203,12 @@ GROUP_AUG: List[AblationConfig] = [
         augment_prob=0.0,
     ),
     AblationConfig(
-        experiment_name="aug_light",
+        experiment_name="aug_normal",
         group="aug",
-        variant_type="noise_light",
-        variant_name="Light Noise (SNR 20-30dB)",
+        variant_type="noise_normal",
+        variant_name="Normal Noise (SNR 10-25dB)",
         use_noise=True,
-        noise_snr_db=(20.0, 30.0),
+        noise_snr_db=(10.0, 25.0),
         augment_prob=0.8,
     ),
     AblationConfig(
@@ -249,7 +249,7 @@ def apply_augmentations(
     audio: np.ndarray,
     use_noise: bool = True,
     augment_prob: float = 0.8,
-    noise_snr_db: tuple = (10.0, 25.0),
+    noise_snr_db: tuple = (20.0, 30.0),
 ) -> np.ndarray:
     if not use_noise:
         return audio
@@ -275,7 +275,7 @@ class VS13AblationDataset(Dataset):
         stats_mean: Optional[np.ndarray] = None,
         stats_std: Optional[np.ndarray] = None,
         is_training: bool = False,
-        noise_snr_db: Tuple[float, float] = (10.0, 25.0),
+        noise_snr_db: Tuple[float, float] = (20.0, 30.0),
         use_noise: bool = True,
         augment_prob: float = 0.8,
         preloaded_audio: Optional[List[np.ndarray]] = None,
@@ -442,7 +442,7 @@ def run_dummy_variant(
         dummy_audio = np.random.randn(Config.AUDIO_LENGTH_SAMPLES).astype(np.float32)
         _ = apply_augmentations(
             dummy_audio,
-            noise_snr_db=getattr(cfg, "noise_snr_db", (10.0, 25.0)),
+            noise_snr_db=getattr(cfg, "noise_snr_db", (20.0, 30.0)),
             use_noise=cfg.use_noise,
             augment_prob=1.0,
         )
@@ -544,7 +544,7 @@ def train_ablation_variant(
         train_ds = VS13AblationDataset(
             audio_paths=sub_train_paths, speeds=sub_train_speeds,
             stats_mean=mean_val, stats_std=std_val, is_training=True,
-            noise_snr_db=getattr(cfg, "noise_snr_db", (10.0, 25.0)),
+            noise_snr_db=getattr(cfg, "noise_snr_db", (20.0, 30.0)),
             use_noise=cfg.use_noise, augment_prob=cfg.augment_prob,
             preloaded_audio=sub_train_audio,
         )
