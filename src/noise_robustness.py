@@ -120,7 +120,11 @@ def evaluate_ensemble_noise_curve(model_dir: str, data_dir: str, output_csv: str
             base_filters=getattr(Config, 'BASE_FILTERS', 96),
             dropout=getattr(Config, 'DROPOUT', 0.3)
         ).to(device)
-        model.load_state_dict(torch.load(p, map_location=device))
+        checkpoint = torch.load(p, map_location=device)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            model.load_state_dict(checkpoint)
         model.eval()
         ensemble.append(model)
 
