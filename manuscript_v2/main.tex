@@ -84,6 +84,7 @@ Approaches to this problem have transitioned from physics-driven modeling to dat
 
 \begin{figure*}[htbp]
 \centering
+\resizebox{\textwidth}{!}{
 \begin{tikzpicture}[
     node distance=1.5cm and 2cm,
     box/.style={rectangle, draw, thick, align=center, fill=blue!10, rounded corners=2pt, font=\small},
@@ -124,11 +125,12 @@ Approaches to this problem have transitioned from physics-driven modeling to dat
 \draw[arrow] (pool) -- (output);
 
 % SE Connections
-\draw[arrow, dashed] (stage1) <-> (se1);
-\draw[arrow, dashed] (stage2) <-> (se2);
-\draw[arrow, dashed] (stage3) <-> (se3);
+\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage1) -- (se1);
+\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage2) -- (se2);
+\draw[{Stealth[scale=1.2]}-{Stealth[scale=1.2]}, dashed, thick] (stage3) -- (se3);
 
 \end{tikzpicture}
+}
 \caption{The proposed Amplitude-Preserving SE-ResNet Architecture. Raw audio is converted to Mel-spectrograms without destructive peak-normalization, preserving the inverse-square law of acoustic loudness. Features are processed through 3 residual stages, each heavily modulated by a Squeeze-and-Excitation (SE) attention mechanism to isolate vehicle friction frequencies.}
 \label{fig:architecture}
 \end{figure*}
@@ -151,6 +153,7 @@ To quantify the stability of the architecture, we also evaluated the expected pe
 \centering
 \caption{Comparison with State-of-the-Art on the VS13 Dataset}
 \label{tab:sota}
+\resizebox{\linewidth}{!}{
 \begin{tabular}{lllc}
 \hline
 \textbf{Method} & \textbf{Modality} & \textbf{RMSE} & \textbf{MAE} \\
@@ -164,6 +167,7 @@ Deep Wavelet-Fourier \cite{ref10} & Audio+Video & $6.54$ & $4.59$ \\
 \textbf{Proposed SE-ResNet (10-Fold)} & \textbf{Audio} & $\mathbf{5.41}$ & $\mathbf{4.19}$ \\
 \hline
 \end{tabular}
+}
 \end{table}
 
 \subsection{Systematic Ablation Study}
@@ -173,6 +177,7 @@ To isolate the contribution of individual architectural components and environme
 \centering
 \caption{Systematic Ablation Study on Test Set (N=81)}
 \label{tab:ablation}
+\resizebox{\linewidth}{!}{
 \begin{tabular}{llccc}
 \hline
 \textbf{Group} & \textbf{Variant} & \textbf{Params} & \textbf{RMSE} & \textbf{MAE} \\
@@ -195,6 +200,7 @@ Aug & Heavy Noise & 6.3M & \textbf{6.15} & \textbf{4.69} \\
 \hline
 \multicolumn{5}{l}{\scriptsize *Denotes the Control Baseline configuration (r=16, 3 Stage, Std Noise).}
 \end{tabular}
+}
 \end{table}
 
 \textbf{Squeeze-and-Excitation:} The inclusion of SE blocks universally improved performance compared to the Baseline ResNet ($7.27$~km/h). Interestingly, on a single-fold basis, $r=32$ provided the strongest regularization ($5.78$~km/h), although $r=8$ was selected during global hyperparameter optimization. This highlights the importance of the SE mechanism in dynamically attending to relevant Doppler frequency bands while suppressing static noise.
@@ -212,6 +218,7 @@ Experiments were performed on both an Edge CPU environment (simulating low-cost 
 \centering
 \caption{Deployment Latency and Throughput Benchmarks}
 \label{tab:benchmark}
+\resizebox{\linewidth}{!}{
 \begin{tabular}{lllccc}
 \hline
 \textbf{Device} & \textbf{Mode} & \textbf{Batch} & \textbf{Latency} & \textbf{P95} & \textbf{Samples/s} \\
@@ -231,6 +238,7 @@ CUDA & Single & 1 & \textbf{2.28 ms} & \textbf{2.46 ms} & \textbf{439.19} \\
 CUDA & Single & 32 & \textbf{14.61 ms} & \textbf{14.69 ms} & \textbf{2190.16} \\
 \hline
 \end{tabular}
+}
 \end{table}
 
 As shown in Table \ref{tab:benchmark}, a single uncompiled SE-ResNet model achieves 24.05 samples per second on a pure CPU, confirming its viability for real-time edge processing (where audio is typically windowed at 1-2 Hz). 
