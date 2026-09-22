@@ -494,8 +494,8 @@ def train_ablation_variant(
     cfg: AblationConfig,
     train_paths: List[str],
     train_speeds: np.ndarray,
-    val_paths: List[str],
-    val_speeds: np.ndarray,
+    val_paths: List[str], # these are test_paths
+    val_speeds: np.ndarray, # these are test_speeds
     stats: Dict[str, Any],
     device: torch.device,
     epochs: int = 150,
@@ -504,12 +504,18 @@ def train_ablation_variant(
     weight_decay: float = Config.WEIGHT_DECAY,
     patience: int = 30,
     preloaded_audio_train: Optional[List[np.ndarray]] = None,
-    preloaded_audio_val: Optional[List[np.ndarray]] = None,
+    preloaded_audio_val: Optional[List[np.ndarray]] = None, # test_audio
 ) -> AblationResult:
     """
-    Trains and evaluates a single ablation model variant on real dataset partitions.
+    Trains and evaluates an ablation model variant using a 5-Fold Ensemble 
+    for maximum stability, evaluated on the blind test set.
     """
     import random
+    import time
+    from copy import deepcopy
+    from torch.utils.data import DataLoader
+    from src.models_torch import build_se_resnet
+    
     random.seed(42)
     np.random.seed(42)
     torch.manual_seed(42)
@@ -518,157 +524,139 @@ def train_ablation_variant(
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-    # 1. Split Training Data into 80% Train / 20% Val for Early Stopping
-    # val_paths here represents the pure Test Set
-    sub_train_paths, sub_val_paths, sub_train_speeds, sub_val_speeds, sub_train_audio, sub_val_audio = train_test_split(
-        train_paths, train_speeds, preloaded_audio_train, test_size=0.2, random_state=42
-    )
-
-    # 2. Dataset & DataLoaders
     mean_val = np.array(stats["mean"], dtype=np.float32)
     std_val = np.array(stats["std"], dtype=np.float32)
 
-    train_ds = VS13AblationDataset(
-        audio_paths=sub_train_paths,
-        speeds=sub_train_speeds,
-        stats_mean=mean_val,
-        stats_std=std_val,
-        is_training=True,
-        noise_snr_db=getattr(cfg, "noise_snr_db", (10.0, 25.0)),
-        use_noise=cfg.use_noise,
-        augment_prob=cfg.augment_prob,
-        preloaded_audio=sub_train_audio,
-    )
-    val_ds = VS13AblationDataset(
-        audio_paths=sub_val_paths,
-        speeds=sub_val_speeds,
-        stats_mean=mean_val,
-        stats_std=std_val,
-        is_training=False,
-        use_noise=False,
-        preloaded_audio=sub_val_audio,
-    )
-    test_ds = VS13AblationDataset(
-        audio_paths=val_paths,
-        speeds=val_speeds,
-        stats_mean=mean_val,
-        stats_std=std_val,
-        is_training=False,
-        use_noise=False,
-        preloaded_audio=preloaded_audio_val,
-    )
-
-    train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, drop_last=False,
-        num_workers=4, pin_memory=True, persistent_workers=True
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, drop_last=False,
-        num_workers=4, pin_memory=True, persistent_workers=True
-    )
-    test_loader = DataLoader(
-        test_ds, batch_size=batch_size, shuffle=False, drop_last=False,
-        num_workers=4, pin_memory=True, persistent_workers=True
-    )
-
-    # 2. Build model
-    model = build_ablation_model(
-        input_shape=(1, 128, 313),
-        use_se=cfg.use_se,
-        se_ratio=cfg.se_ratio,
-        stages=cfg.stages,
-        base_filters=cfg.base_filters,
-        dropout=cfg.dropout,
-    ).to(device)
-
-    param_count = count_parameters(model)
-    optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0.0)
-    criterion = nn.MSELoss()
-
-    best_val_rmse = float("inf")
-    best_val_mae = float("inf")
-    patience_counter = 0
-    best_weights = None
-
-    for epoch in range(1, epochs + 1):
-        model.train()
-        for x_b, y_b in train_loader:
-            x_b, y_b = x_b.to(device), y_b.to(device)
-            optimizer.zero_grad()
-            pred = model(x_b).view(-1)
-            loss = criterion(pred, y_b)
-            loss.backward()
-            optimizer.step()
-
-        scheduler.step()
-
-        # Validation pass
-        model.eval()
-        sq_errors = []
-        abs_errors = []
-        with torch.no_grad():
-            for x_v, y_v in val_loader:
-                x_v, y_v = x_v.to(device), y_v.to(device)
-                pred_v = model(x_v).view(-1)
-                sq_errors.extend((pred_v - y_v).pow(2).cpu().numpy().tolist())
-                abs_errors.extend((pred_v - y_v).abs().cpu().numpy().tolist())
-
-        epoch_rmse = float(np.sqrt(np.mean(sq_errors)))
-        epoch_mae = float(np.mean(abs_errors))
-
-        if epoch_rmse < best_val_rmse:
-            best_val_rmse = epoch_rmse
-            best_val_mae = epoch_mae
-            patience_counter = 0
-            best_weights = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-        else:
-            patience_counter += 1
-
-        if epoch % 10 == 0 or epoch == epochs:
-            logger.info(f"    Epoch {epoch:3d}/{epochs} - Val RMSE: {epoch_rmse:.2f} km/h (Best: {best_val_rmse:.2f} km/h)")
-
-        if patience_counter >= patience:
-            logger.info(f"    Early stopping triggered at epoch {epoch} (best RMSE: {best_val_rmse:.2f} km/h)")
-            break
-
-    # Restore best weights for test evaluation and latency benchmark
-    if best_weights is not None:
-        model.load_state_dict({k: v.to(device) for k, v in best_weights.items()})
-
-    # Benchmark latency on a batch from validation loader
-    first_val_batch, _ = next(iter(val_loader))
-    first_val_batch = first_val_batch.to(device)
-    latency_ms = benchmark_latency(model, first_val_batch, device, repetitions=20, warmup=5)
-
-    # Evaluate on the true held-out test set
-    test_loader = DataLoader(
-        test_ds, batch_size=batch_size, shuffle=False, drop_last=False,
-        num_workers=4, pin_memory=True, persistent_workers=True
-    )
+    kfold = SortedKFold(n_splits=5)
+    ensemble_models = []
     
-    test_sq_errors = []
-    test_abs_errors = []
-    model.eval()
+    # 5-Fold Training Loop
+    for fold, (train_idx, val_idx) in enumerate(kfold.split(train_paths, y=train_speeds)):
+        sub_train_paths = [train_paths[i] for i in train_idx]
+        sub_train_speeds = train_speeds[train_idx]
+        sub_val_paths = [train_paths[i] for i in val_idx]
+        sub_val_speeds = train_speeds[val_idx]
+        
+        sub_train_audio = [preloaded_audio_train[i] for i in train_idx] if preloaded_audio_train else None
+        sub_val_audio = [preloaded_audio_train[i] for i in val_idx] if preloaded_audio_train else None
+        
+        train_ds = VS13AblationDataset(
+            audio_paths=sub_train_paths, speeds=sub_train_speeds,
+            stats_mean=mean_val, stats_std=std_val, is_training=True,
+            noise_snr_db=getattr(cfg, "noise_snr_db", (10.0, 25.0)),
+            use_noise=cfg.use_noise, augment_prob=cfg.augment_prob,
+            preloaded_audio=sub_train_audio,
+        )
+        val_ds = VS13AblationDataset(
+            audio_paths=sub_val_paths, speeds=sub_val_speeds,
+            stats_mean=mean_val, stats_std=std_val, is_training=False,
+            use_noise=False, preloaded_audio=sub_val_audio,
+        )
+        
+        train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0)
+        val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+
+        model = build_se_resnet(
+            input_shape=(1, Config.N_MELS, 313),
+            use_se=cfg.use_se, se_ratio=cfg.se_ratio,
+            stages=cfg.stages, base_filters=getattr(cfg, 'base_filters', 96), dropout=getattr(cfg, 'dropout', 0.3),
+        ).to(device)
+
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+        criterion = torch.nn.MSELoss()
+        
+        best_rmse = float("inf")
+        best_state = None
+        no_improve = 0
+        
+        for epoch in range(epochs):
+            model.train()
+            for x_b, y_b in train_loader:
+                x_b, y_b = x_b.to(device), y_b.to(device)
+                optimizer.zero_grad()
+                v_pred = model(x_b).view(-1)
+                loss = criterion(v_pred, y_b)
+                loss.backward()
+                optimizer.step()
+            scheduler.step()
+            
+            model.eval()
+            val_sq_err = []
+            with torch.no_grad():
+                for x_v, y_v in val_loader:
+                    x_v, y_v = x_v.to(device), y_v.to(device)
+                    v_pred = model(x_v).view(-1)
+                    val_sq_err.extend((v_pred - y_v).pow(2).cpu().numpy().tolist())
+            
+            val_rmse = float(np.sqrt(np.mean(val_sq_err)))
+            if val_rmse < best_rmse:
+                best_rmse = val_rmse
+                best_state = deepcopy(model.state_dict())
+                no_improve = 0
+            else:
+                no_improve += 1
+                if no_improve >= patience:
+                    break
+                    
+        model.load_state_dict(best_state)
+        ensemble_models.append(model.eval())
+        
+    # Evaluate Ensemble on Blind Test Set
+    test_ds = VS13AblationDataset(
+        audio_paths=val_paths, speeds=val_speeds,
+        stats_mean=mean_val, stats_std=std_val, is_training=False,
+        use_noise=False, preloaded_audio=preloaded_audio_val,
+    )
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    
+    ens_sq_err, ens_abs_err = [], []
+    single_rmses, single_maes = [], []
+    latencies = []
+    
+    # Calculate Single Model metrics first
+    for m in ensemble_models:
+        sq_err, abs_err = [], []
+        with torch.no_grad():
+            for x_t, y_t in test_loader:
+                x_t, y_t = x_t.to(device), y_t.to(device)
+                pred = m(x_t).view(-1)
+                sq_err.extend((pred - y_t).pow(2).cpu().numpy().tolist())
+                abs_err.extend(torch.abs(pred - y_t).cpu().numpy().tolist())
+        single_rmses.append(float(np.sqrt(np.mean(sq_err))))
+        single_maes.append(float(np.mean(abs_err)))
+    
+    avg_single_rmse = float(np.mean(single_rmses))
+    avg_single_mae = float(np.mean(single_maes))
+
+    # Calculate Ensemble metrics
     with torch.no_grad():
         for x_t, y_t in test_loader:
             x_t, y_t = x_t.to(device), y_t.to(device)
-            pred_t = model(x_t).view(-1)
-            test_sq_errors.extend((pred_t - y_t).pow(2).cpu().numpy().tolist())
-            test_abs_errors.extend((pred_t - y_t).abs().cpu().numpy().tolist())
+            start_t = time.perf_counter()
             
-    test_rmse = float(np.sqrt(np.mean(test_sq_errors)))
-    test_mae = float(np.mean(test_abs_errors))
+            # Ensemble Forward Pass
+            preds = torch.stack([m(x_t).view(-1) for m in ensemble_models])
+            v_pred = torch.mean(preds, dim=0)
+            
+            if device.type == "cuda": torch.cuda.synchronize()
+            end_t = time.perf_counter()
+            latencies.append((end_t - start_t) / x_t.size(0) * 1000.0)
+            
+            ens_sq_err.extend((v_pred - y_t).pow(2).cpu().numpy().tolist())
+            ens_abs_err.extend(torch.abs(v_pred - y_t).cpu().numpy().tolist())
 
     return AblationResult(
         experiment_name=cfg.experiment_name,
         variant_type=cfg.variant_type,
         variant_name=cfg.variant_name,
         group=cfg.group,
-        parameter_count=param_count,
-        val_rmse=round(test_rmse, 4),
-        val_mae=round(test_mae, 4),
-        latency_ms=round(latency_ms, 3),
+        parameter_count=sum(p.numel() for p in ensemble_models[0].parameters()),
+        single_rmse=round(avg_single_rmse, 4),
+        single_mae=round(avg_single_mae, 4),
+        ens_rmse=round(float(np.sqrt(np.mean(ens_sq_err))), 4),
+        ens_mae=round(float(np.mean(ens_abs_err)), 4),
+        latency_ms=round(float(np.mean(latencies)), 4),
         use_se=cfg.use_se,
         se_ratio=cfg.se_ratio,
         stages=cfg.stages,
