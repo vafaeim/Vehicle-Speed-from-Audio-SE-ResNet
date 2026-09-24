@@ -123,19 +123,31 @@ def load_model_from_checkpoint(ckpt_path, device):
     return model
 
 
-def audio_to_tensor(audio, sr, device):
-    """Convert raw audio to model-ready tensor (1, 1, 128, T)."""
+
+def load_dataset_stats(data_dir):
+    stats_path = os.path.join(data_dir, "dataset_stats.json")
+    if os.path.exists(stats_path):
+        with open(stats_path, "r") as f:
+            stats = json.load(f)
+            return float(stats["mean"]), float(stats["std"])
+    print(f"  [WARN] dataset_stats.json not found in {data_dir}. Using mean=0, std=1.")
+    return 0.0, 1.0
+
+def audio_to_tensor(audio, sr, device, data_dir):
+    """Convert raw audio to model-ready tensor (1, 1, 128, T) with normalization."""
     if len(audio) > Config.AUDIO_LENGTH_SAMPLES:
         audio = audio[:Config.AUDIO_LENGTH_SAMPLES]
     else:
         audio = np.pad(audio, (0, Config.AUDIO_LENGTH_SAMPLES - len(audio)))
     mel = compute_mel(audio, sr)
+    mean, std = load_dataset_stats(data_dir)
+    mel = (mel - mean) / std
     return torch.tensor(mel, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
 
 
 # ── Ensemble Inference ─────────────────────────────────────────────
 
-def run_ensemble_inference(model_dir, test_paths, test_speeds):
+def run_ensemble_inference(model_dir, test_paths, test_speeds, data_dir):
     """Load all .pt checkpoints and run real inference on the test set."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt_paths = sorted(glob.glob(os.path.join(model_dir, "*.pt")))
@@ -146,6 +158,8 @@ def run_ensemble_inference(model_dir, test_paths, test_speeds):
     # Pre-load test audio
     print("  Loading test audio...")
     tensors = []
+
+    mean, std = load_dataset_stats(data_dir)
     for p in test_paths:
         y, sr = load_audio(p)
         if len(y) > Config.AUDIO_LENGTH_SAMPLES:
@@ -153,6 +167,7 @@ def run_ensemble_inference(model_dir, test_paths, test_speeds):
         else:
             y = np.pad(y, (0, Config.AUDIO_LENGTH_SAMPLES - len(y)))
         mel = compute_mel(y, sr)
+        mel = (mel - mean) / std
         tensors.append(torch.tensor(mel, dtype=torch.float32).unsqueeze(0))
     X = torch.stack(tensors, dim=0).to(device)
 
@@ -239,12 +254,12 @@ def gen_waveform_to_spec(audio_path, out):
 
 # ── A3: SE Activation Heatmap ──────────────────────────────────────
 
-def gen_se_activation(audio_path, model_path, out):
+def gen_se_activation(audio_path, model_path, data_dir, out):
     print(f"[A3] {out}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model_from_checkpoint(model_path, device)
     y, sr = load_audio(audio_path)
-    x_tensor = audio_to_tensor(y, sr, device)
+    x_tensor = audio_to_tensor(y, sr, device, data_dir)
 
     # Collect SE excitation weights from ALL SE blocks via hooks
     se_activations = {}
@@ -313,8 +328,8 @@ def gen_scatter_pred(y_true, y_pred, out):
 
     fig, ax = plt.subplots(figsize=(7, 7))
     sns.regplot(x=y_true, y=y_pred, ax=ax,
-                scatter_kws={"alpha": 0.65, "s": 45, "edgecolor": "white",
-                             "linewidth": 0.5, "color": "#2196F3"},
+                scatter_kws={"alpha": 0.65, "s": 45, 
+                             "color": "#2196F3"},
                 line_kws={"color": "#E53935", "linewidth": 1.8,
                            "label": f"OLS Fit (R² = {r2:.3f})"},
                 ci=95)
@@ -496,7 +511,7 @@ Example (Kaggle):
     gen_waveform_to_spec(args.audio_path, O("fig_waveform_to_spec.pdf"))
 
     # ── A3: SE activation heatmap ──
-    gen_se_activation(args.audio_path, args.model_path,
+    gen_se_activation(args.audio_path, args.model_path, args.data_dir,
                       O("fig_se_activation.pdf"))
 
     # ── Run real ensemble inference for A4 & A5 ──
@@ -504,7 +519,7 @@ Example (Kaggle):
     split = get_official_train_test_split(args.data_dir)
     test_paths, test_speeds, test_classes = split[3], split[4], split[5]
     ens_preds, gt, _ = run_ensemble_inference(
-        args.model_dir, test_paths, test_speeds)
+        args.model_dir, test_paths, test_speeds, args.data_dir)
 
     # ── A4: Scatter plot ──
     gen_scatter_pred(gt, ens_preds, O("fig_scatter_pred.pdf"))
