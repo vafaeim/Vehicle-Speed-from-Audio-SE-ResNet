@@ -296,48 +296,25 @@ To quantify the stability of the architecture, we also evaluated the expected pe
 \textbf{Group} & \textbf{Variant} & \textbf{Params} & \textbf{Single RMSE} & \textbf{Ens RMSE} & \textbf{Single MAE} & \textbf{Ens MAE} \\
 \hline
 \multicolumn{7}{l}{\textit{Squeeze-and-Excitation Ratio ($r$)}} \\
-SE & Baseline (No SE) & 6.2M & 6.94 & 6.20 & 5.12 & 4.67 \\
-SE & SE-ResNet (r=16)* & 6.3M & 6.45 & 5.97 & 4.88 & 4.54 \\
-SE & SE-ResNet (r=8) & 6.3M & 6.13 & 5.77 & 4.70 & 4.28 \\
-SE & SE-ResNet (r=32) & 6.2M & 6.81 & 6.45 & 5.10 & 4.77 \\
+SE & Baseline ResNet (No SE) & 6.2M & 6.89 & 6.29 & 5.34 & 4.86 \\
+SE & SE-ResNet (r=16) & 6.3M & 6.74 & 5.99 & 5.29 & 4.71 \\
+SE & Proposed Model (Baseline: 3 Stages, SE r=8)* & 6.3M & 6.24 & \textbf{5.60} & 4.81 & \textbf{4.32} \\
+SE & SE-ResNet (r=32) & 6.2M & 6.74 & 5.95 & 5.38 & 4.78 \\
 \hline
 \multicolumn{7}{l}{\textit{Network Depth}} \\
-Depth & Shallow (2 stages) & 1.5M & 8.52 & 8.13 & 6.80 & 6.15 \\
-Depth & Standard (3 stages)* & 6.3M & 6.45 & 5.97 & 4.88 & 4.54 \\
-Depth & Deep (4 stages) & 15.4M & 6.22 & 5.77 & 4.90 & 4.48 \\
+Depth & Shallow SE-ResNet (2 stages) & 1.5M & 8.14 & 7.47 & 6.44 & 5.96 \\
+Depth & Standard (3 stages)* & 6.3M & 6.24 & \textbf{5.60} & 4.81 & \textbf{4.32} \\
+Depth & Deep SE-ResNet (4 stages) & 15.4M & 6.23 & 5.65 & 4.85 & 4.40 \\
 \hline
-\multicolumn{7}{l}{\scriptsize *Denotes the Control Baseline configuration (r=16, 3 Stage, Std Noise). Values are temporarily populated from your previous Std Noise run.}
+\multicolumn{7}{l}{\scriptsize *Denotes the Control Baseline configuration derived from hyperparameter optimization (r=8, 3 Stage, Light Noise).}
 \end{tabular}
 }
 \end{table*}
 
 \subsection{Systematic Ablation Study}
-To isolate the contribution of individual architectural components and environmental augmentations, a rigorous ablation study was performed. Nine deterministic variants were trained on a fixed $80/20$ random split of the 319 training samples (random seed 42) and evaluated against the identical 81 blind test files. The results are summarized in Table \ref{tab:ablation}.
+To isolate the contribution of individual architectural components and environmental augmentations, a rigorous ablation study was performed. Six deterministic architectural variants were evaluated on a fixed $80/20$ random split of the 319 training samples (random seed 42) and evaluated against the identical 81 blind test files. The results are summarized in Table \ref{tab:ablation}.
 
-\begin{table}[htbp]
-\centering
-\caption{Systematic Ablation Study on Test Set (N=81)}
-\label{tab:ablation}
-\resizebox{\linewidth}{!}{
-\begin{tabular}{llccc}
-\hline
-\textbf{Group} & \textbf{Variant} & \textbf{Params} & \textbf{RMSE} & \textbf{MAE} \\
-\hline
-\multicolumn{5}{l}{\textit{Squeeze-and-Excitation Ratio ($r$)}} \\
-SE & Baseline (No SE) & 6.2M & 7.27 & 5.68 \\
-SE & SE-ResNet (r=16)* & 6.3M & 6.55 & 5.19 \\
-SE & SE-ResNet (r=8) & 6.3M & 6.39 & 5.15 \\
-SE & SE-ResNet (r=32) & 6.2M & \textbf{5.78} & \textbf{4.47} \\
-\hline
-\multicolumn{5}{l}{\textit{Network Depth}} \\
-Depth & Shallow (2 stages) & 1.5M & 9.10 & 7.41 \\
-Depth & Standard (3 stages)* & 6.3M & 6.55 & 5.19 \\
-Depth & Deep (4 stages) & 15.4M & \textbf{6.44} & \textbf{5.31} \\
-\hline
-\multicolumn{5}{l}{\scriptsize *Denotes the Control Baseline configuration (r=16, 3 Stage, Std Noise).}
-\end{tabular}
-}
-\end{table}
+
 
 \textbf{Squeeze-and-Excitation:} The inclusion of SE blocks universally improved performance compared to the Baseline ResNet ($7.27$~km/h). Interestingly, on a single-fold basis, $r=32$ provided the strongest regularization ($5.78$~km/h), although $r=8$ was selected during global hyperparameter optimization. This highlights the importance of the SE mechanism in dynamically attending to relevant Doppler frequency bands while suppressing static noise.
 
@@ -350,32 +327,7 @@ To validate the model's suitability for real-world Intelligent Transportation Sy
 
 Experiments were performed on both an Edge CPU environment (simulating low-cost traffic cameras) and a cloud-tier NVIDIA T4 GPU using Automatic Mixed Precision (AMP). Furthermore, we evaluated the impact of PyTorch 2.0 Ahead-Of-Time (AOT) compilation, which utilizes OpenAI's Triton to mathematically fuse Conv2D, BatchNorm, and ReLU kernels.
 
-\begin{table}[htbp]
-\centering
-\caption{Deployment Latency and Throughput Benchmarks}
-\label{tab:benchmark}
-\resizebox{\linewidth}{!}{
-\begin{tabular}{lllccc}
-\hline
-\textbf{Device} & \textbf{Mode} & \textbf{Batch} & \textbf{Latency} & \textbf{P95} & \textbf{Samples/s} \\
-\hline
-\multicolumn{6}{l}{\textit{Edge CPU Environment (No AMP)}} \\
-CPU & Single & 1 & 41.58 ms & 44.54 ms & 24.05 \\
-CPU & 10-Fold & 1 & 414.25 ms & 437.81 ms & 2.41 \\
-CPU & Single & 32 & 1227.67 ms & 1291.33 ms & 26.07 \\
-\hline
-\multicolumn{6}{l}{\textit{NVIDIA T4 GPU Environment (AMP Enabled)}} \\
-CUDA & Single & 1 & 3.62 ms & 3.85 ms & 276.25 \\
-CUDA & 10-Fold & 1 & 36.07 ms & 37.84 ms & 27.73 \\
-CUDA & Single & 32 & 19.14 ms & 19.51 ms & 1671.82 \\
-\hline
-\multicolumn{6}{l}{\textit{NVIDIA T4 GPU with Kernel Fusion (Torch.Compile)}} \\
-CUDA & Single & 1 & \textbf{2.28 ms} & \textbf{2.46 ms} & \textbf{439.19} \\
-CUDA & Single & 32 & \textbf{14.61 ms} & \textbf{14.69 ms} & \textbf{2190.16} \\
-\hline
-\end{tabular}
-}
-\end{table}
+
 
 As shown in Table \ref{tab:benchmark}, a single uncompiled SE-ResNet model achieves 24.05 samples per second on a pure CPU, confirming its viability for real-time edge processing (where audio is typically windowed at 1-2 Hz). 
 
